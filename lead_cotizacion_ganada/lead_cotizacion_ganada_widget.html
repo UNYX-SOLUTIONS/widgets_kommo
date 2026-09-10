@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Widget Conversión Cotización</title>
+    <link rel="stylesheet" type="text/css" href="//fonts.googleapis.com/css?family=Open+Sans:400,300&subset=latin,cyrillic-ext">
+    <link rel="stylesheet" type="text/css" href='//fonts.googleapis.com/css?family=PT+Sans:400,700&subset=latin,cyrillic-ext'>
+    <style type="text/css">
+        * { box-sizing: border-box; text-rendering: geometricPrecision; -webkit-font-smoothing: antialiased; }
+        html, body { padding: 0; margin: 0; font-family: 'PT Sans'; color: #2E3640; background: transparent; }
+        a, a:active, a:hover, a:visited { color: #2E3640; text-decoration: none; }
+        .cell-wrapper { padding: 20px 15px 15px 15px; }
+        .cell-wrapper__caption { font-size: 15px; font-weight: bold; }
+        .cell-wrapper__data { height: 50px; }
+        .cell-wrapper__data__num { font-size: 40px; line-height: 68px; font-family: 'Open Sans', sans-serif; }
+        .cell-wrapper__bottom { margin-top: 15px; font-size: 18px; font-family: 'Open Sans', sans-serif; }
+        .cell-wrapper__bottom.red, .cell-wrapper__bottom.red a { color: #fe6e6e; }
+        .cell-wrapper__bottom.green, .cell-wrapper__bottom.green a { color: #41cfc4; }
+    </style>
+</head>
+<body>
+    <div class="cell-wrapper">
+        <div class="cell-wrapper__caption">Conversión Cotización</div>
+        <div class="cell-wrapper__data">
+            <div class="cell-wrapper__data__num" id="main-data">Cargando...</div>
+        </div>
+        <div class="cell-wrapper__bottom green" id="sub-data">
+            <a href="#">--%</a>
+        </div>
+    </div>
+
+    <script>
+        // ⚠️ IMPORTANTE: Reemplaza esto con la URL de PRODUCCIÓN de tu Webhook en n8n
+        const N8N_WEBHOOK_URL = 'https://flow.unyxsolutions.com/webhook-test/kommo-widget-conversion';
+
+        async function fetchData() {
+            try {
+                const response = await fetch(N8N_WEBHOOK_URL);
+                const data = await response.json();
+
+                document.getElementById('main-data').innerText = data.text_main;
+                
+                const subDataElement = document.getElementById('sub-data');
+                subDataElement.querySelector('a').innerText = data.text_sub;
+
+                if (parseFloat(data.text_sub) < 50) {
+                    subDataElement.classList.remove('green');
+                    subDataElement.classList.add('red');
+                } else {
+                    subDataElement.classList.remove('red');
+                    subDataElement.classList.add('green');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                document.getElementById('main-data').innerText = 'Error';
+            }
+        }
+        fetchData();
+        setInterval(fetchData, 300000); // Actualiza cada 5 min
+    </script>
+</body>
+</html>

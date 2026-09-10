@@ -1,0 +1,201 @@
+{
+  "name": "Kommo Widget - Conversion Cotizacion Enviada",
+  "nodes": [
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { text_main: '0 de 0', text_sub: 'error' } }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              }
+            ]
+          }
+        }
+      },
+      "id": "dba50dc0-c222-4ee6-be27-5c27477a8687",
+      "name": "Responder Error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1136,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "path": "kommo-widget-conversion",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "*"
+        }
+      },
+      "id": "6ed25dc8-cc3b-4d22-905e-14ed63881454",
+      "name": "Webhook Widget",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        464,
+        112
+      ],
+      "webhookId": "b8e2f3a4-0d5c-4e6b-9f7a-2c3d4e5f6a02"
+    },
+    {
+      "parameters": {
+        "url": "https://meditecec.kommo.com/api/v4/leads",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "limit",
+              "value": "250"
+            },
+            {
+              "name": "page",
+              "value": "1"
+            },
+            {
+              "name": "with",
+              "value": "contacts"
+            },
+            {
+              "name": "filter[pipeline_id][0]",
+              "value": "12677012"
+            },
+            {
+              "name": "filter[pipeline_id][1]",
+              "value": "12676956"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "pagination": {
+            "pagination": {
+              "parameters": {
+                "parameters": [
+                  {
+                    "name": "page",
+                    "value": "={{ $pageCount + 1 }}"
+                  }
+                ]
+              },
+              "paginationCompleteWhen": "other",
+              "completeExpression": "={{ $response.body._embedded.leads.length < 250 }}",
+              "limitPagesFetched": true,
+              "requestInterval": 200
+            }
+          }
+        }
+      },
+      "id": "3f81ece7-454a-4c74-9ffb-e87b5503f7fb",
+      "name": "Consultar Leads Kommo",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        688,
+        112
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "rsBfubSe7f022RsT",
+          "name": "Kommo Meditec Token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const PIPELINE_VENTAS = 12677012;\nconst PIPELINE_RECURRENTES = 12676956;\nconst STAGE_WON_ID = 142;\nconst STAGE_LOST_ID = 143;\nconst FIELD_COTIZACION_ID = 1046555;\nconst leads = items.flatMap(i => i.json._embedded?.leads ?? []);\nfunction tieneCotizacion(lead) { const field = lead.custom_fields_values?.find(f => f.field_id === FIELD_COTIZACION_ID); if (!field?.values?.length) return false; const valor = field.values[0].value; return valor !== null && valor !== undefined && String(valor).trim() !== ''; }\nlet countWon = 0; let countLost = 0;\nfor (const lead of leads) { if (lead.pipeline_id !== PIPELINE_VENTAS && lead.pipeline_id !== PIPELINE_RECURRENTES) continue; if (!tieneCotizacion(lead)) continue; if (lead.status_id === STAGE_WON_ID) countWon++; else if (lead.status_id === STAGE_LOST_ID) countLost++; }\nconst totalCerrados = countWon + countLost;\nconst percentage = totalCerrados > 0 ? ((countWon / totalCerrados) * 100).toFixed(1) : '0.0';\nreturn [{ json: { text_main: String(countWon) + ' de ' + String(totalCerrados), text_sub: String(percentage) + '%', raw_won: countWon, raw_lost: countLost, raw_total: totalCerrados } }];"
+      },
+      "id": "f9eaa4d6-d19e-4173-88c6-1efb8c0200e7",
+      "name": "Calcular Conversion",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        896,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              }
+            ]
+          }
+        }
+      },
+      "id": "2d3b975b-6a77-4a7c-8fe7-2637888065ba",
+      "name": "Responder al Widget",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1136,
+        112
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook Widget": {
+      "main": [
+        [
+          {
+            "node": "Consultar Leads Kommo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Consultar Leads Kommo": {
+      "main": [
+        [
+          {
+            "node": "Calcular Conversion",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calcular Conversion": {
+      "main": [
+        [
+          {
+            "node": "Responder al Widget",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "d02ef0cf-7595-44dc-acde-aef96b98d0b3",
+  "meta": {
+    "instanceId": "e6ed2619c97de62ff0de8886ebe0c22aed325375b3b9a3c4b1a4e4dab3199a78"
+  },
+  "nodeGroups": [],
+  "id": "geCcEGeJkHnfVxGU",
+  "tags": []
+}
