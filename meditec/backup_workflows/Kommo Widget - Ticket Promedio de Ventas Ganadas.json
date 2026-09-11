@@ -46,6 +46,14 @@
             {
               "name": "filter[pipeline_id][1]",
               "value": "12676956"
+            },
+            {
+              "name": "filter[closed_at][from]",
+              "value": "={{ $('Webhook Widget').item.json.query.from ? $('Webhook Widget').item.json.query.from : 0 }}"
+            },
+            {
+              "name": "filter[closed_at][to]",
+              "value": "={{ $('Webhook Widget').item.json.query.to ? $('Webhook Widget').item.json.query.to : 9999999999 }}"
             }
           ]
         },
@@ -176,10 +184,13 @@
       ]
     }
   },
-  "active": false,
+  "active": true,
   "settings": {
     "executionOrder": "v1",
-    "binaryMode": "separate"
+    "binaryMode": "separate",
+    "timeSavedMode": "fixed",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
   },
   "versionId": "77c08a28-65fa-4a18-bfaa-ed4d85f0d484",
   "meta": {

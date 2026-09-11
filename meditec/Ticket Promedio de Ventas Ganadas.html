@@ -64,9 +64,59 @@
         // ⚠️ IMPORTANTE: Reemplaza esto con la URL de PRODUCCIÓN de tu Webhook en n8n
         const N8N_WEBHOOK_URL = 'https://flow.unyxsolutions.com/webhook/kommo-widget-ticket-promedio';
 
+        function parseDate(value) {
+            if (!value || value === 'false') return null;
+            const m = String(value).match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+            if (m) return new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]));
+            if (/^\d+$/.test(value)) {
+                const n = Number(value);
+                return new Date(n < 1e12 ? n * 1000 : n);
+            }
+            const d = new Date(value);
+            return isNaN(d.getTime()) ? null : d;
+        }
+
+        function buildWebhookUrl() {
+            const params = new URLSearchParams(window.location.search);
+            const period = params.get('period') || '';
+            const now = new Date();
+
+            const startOfDay = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+            const endOfDay = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59, 999);
+
+            const dateFrom = parseDate(params.get('date_from'));
+            const dateTo = parseDate(params.get('date_to'));
+
+            let from = 0;
+            let to = now.getTime();
+
+            if (period === 'custom' && dateFrom) {
+                from = startOfDay(dateFrom).getTime();
+                if (dateTo) to = endOfDay(dateTo).getTime();
+            } else if (period === 'today') {
+                from = startOfDay(now).getTime();
+                to = endOfDay(now).getTime();
+            } else if (period === 'yesterday') {
+                const y = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+                from = startOfDay(y).getTime();
+                to = endOfDay(y).getTime();
+            } else if (period === 'week') {
+                const d = startOfDay(now);
+                d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+                from = d.getTime();
+            } else if (period === 'month') {
+                from = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+            }
+
+            const qs = new URLSearchParams();
+            qs.set('from', Math.floor(from / 1000));
+            qs.set('to', Math.floor(to / 1000));
+            return N8N_WEBHOOK_URL + '?' + qs.toString();
+        }
+
         async function fetchData() {
             try {
-                const response = await fetch(N8N_WEBHOOK_URL);
+                const response = await fetch(buildWebhookUrl());
                 const data = await response.json();
 
                 document.getElementById('main-data').innerText = data.text_main;
