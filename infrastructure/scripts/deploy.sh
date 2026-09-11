@@ -6,23 +6,25 @@ set -e
 PROJECT_DIR="/docker/widgets-kommo"
 ENV_FILE="$PROJECT_DIR/.env.production"
 
+# El .env.production es OPCIONAL: este proyecto no tiene secretos.
+# Sirve solo para cambiar el dominio, puerto o red. Si no existe,
+# se usan los valores por defecto del docker-compose.yml.
+ENV_ARGS=""
+if [ -f "$ENV_FILE" ]; then
+    set -a
+    source "$ENV_FILE"
+    set +a
+    ENV_ARGS="--env-file $ENV_FILE"
+fi
+
+NETWORK="${TRAEFIK_NETWORK:-unyx-widgets-front}"
+DOMAIN="${WIDGETS_DOMAIN:-widgets.unyxsolutions.com}"
+
 echo ""
 echo "======================================"
 echo " UNYX Widgets Kommo - Deploy"
 echo "======================================"
 echo ""
-
-if [ ! -f "$ENV_FILE" ]; then
-    echo "ERROR: $ENV_FILE no existe."
-    echo "       Cópialo desde la plantilla:  cp .env.example .env.production"
-    exit 1
-fi
-
-set -a
-source "$ENV_FILE"
-set +a
-
-NETWORK="${TRAEFIK_NETWORK:-unyx-widgets-front}"
 
 # ==========================================
 # 1. ACTUALIZAR REPOSITORIO
@@ -65,7 +67,7 @@ echo "Red lista."
 echo ""
 echo "[3/6] Validando Docker Compose..."
 
-docker compose --env-file "$ENV_FILE" config > /dev/null
+docker compose $ENV_ARGS config > /dev/null
 
 echo "Docker Compose válido."
 
@@ -76,7 +78,7 @@ echo "Docker Compose válido."
 echo ""
 echo "[4/6] Reconstruyendo unyx-widgets..."
 
-docker compose --env-file "$ENV_FILE" up -d --build
+docker compose $ENV_ARGS up -d --build
 
 echo ""
 echo "Contenedor actualizado."
@@ -98,7 +100,7 @@ echo ""
 echo "[6/6] Estado final..."
 echo ""
 
-docker compose --env-file "$ENV_FILE" ps
+docker compose $ENV_ARGS ps
 
 echo ""
 echo "--------------------------------------"
@@ -108,11 +110,11 @@ docker ps \
   --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
 
 echo ""
-echo "Widgets disponibles en https://${WIDGETS_DOMAIN}:"
+echo "Widgets disponibles en https://${DOMAIN}:"
 for dir in */; do
     [ -d "$dir" ] || continue
     ls "$dir"/*.html > /dev/null 2>&1 || continue
-    echo "  https://${WIDGETS_DOMAIN}/${dir%/}/"
+    echo "  https://${DOMAIN}/${dir%/}/"
 done
 
 echo ""
@@ -120,3 +122,4 @@ echo "======================================"
 echo " Deploy Widgets Kommo terminado"
 echo "======================================"
 echo ""
+
