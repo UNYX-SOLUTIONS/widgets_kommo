@@ -1,0 +1,45 @@
+services:
+  # =========================================================
+  # WIDGETS KOMMO
+  # nginx que sirve los widgets HTML de Kommo
+  # HTTPS lo termina Traefik (igual que unyx-workspace-enterprise)
+  # =========================================================
+  widgets:
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    container_name: unyx-widgets
+    restart: unless-stopped
+
+    networks:
+      - widgets-front
+
+    ports:
+      - "127.0.0.1:${WIDGETS_HTTP_PORT:-8081}:80"
+
+    labels:
+      - "traefik.enable=true"
+
+      - "traefik.http.routers.unyx-widgets.rule=Host(`${WIDGETS_DOMAIN}`)"
+      - "traefik.http.routers.unyx-widgets.entrypoints=websecure"
+      - "traefik.http.routers.unyx-widgets.tls=true"
+      - "traefik.http.routers.unyx-widgets.tls.certresolver=letsencrypt"
+
+      - "traefik.http.services.unyx-widgets.loadbalancer.server.port=80"
+
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+# =========================================================
+# NETWORKS
+# Red externa compartida con Traefik (la crea deploy.sh)
+# =========================================================
+networks:
+  widgets-front:
+    name: ${TRAEFIK_NETWORK:-unyx-widgets-front}
+    external: true

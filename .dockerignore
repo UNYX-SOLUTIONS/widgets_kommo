@@ -1,0 +1,15 @@
+# Git
+.git
+.gitignore
+
+# Secrets / entorno
+.env
+.env.*
+
+# Docker
+Dockerfile
+docker-compose.yml
+
+# Documentación y scripts (no van dentro de la imagen)
+*.md
+infrastructure
