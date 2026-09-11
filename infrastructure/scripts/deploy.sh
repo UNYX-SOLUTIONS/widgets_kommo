@@ -2,8 +2,11 @@
 
 set -e
 
-# Ruta del proyecto en el VPS (cambiar si se clonó en otro lado)
-PROJECT_DIR="cd ../.."
+# Ruta del proyecto: se calcula sola desde la ubicación de este script.
+# El script está en infrastructure/scripts/, así que la raíz del repo
+# es dos niveles arriba. Funciona sin importar dónde se clone el repo.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(dirname "$(dirname "$SCRIPT_DIR")")"
 ENV_FILE="$PROJECT_DIR/.env.production"
 
 # El .env.production es OPCIONAL: este proyecto no tiene secretos.
