@@ -1,0 +1,191 @@
+{
+  "name": "Kommo Widget - Ticket Promedio de Ventas Ganadas",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "kommo-widget-ticket-promedio",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "*"
+        }
+      },
+      "id": "33bec367-22e9-49dc-ba3d-dc10d7790ea5",
+      "name": "Webhook Widget",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        512,
+        96
+      ],
+      "webhookId": "a1b2c3d4-0e5f-4a6b-8c9d-0e1f2a3b4c5d"
+    },
+    {
+      "parameters": {
+        "url": "https://meditecec.kommo.com/api/v4/leads",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "limit",
+              "value": "250"
+            },
+            {
+              "name": "page",
+              "value": "1"
+            },
+            {
+              "name": "with",
+              "value": "contacts"
+            },
+            {
+              "name": "filter[pipeline_id][0]",
+              "value": "12677012"
+            },
+            {
+              "name": "filter[pipeline_id][1]",
+              "value": "12676956"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "pagination": {
+            "pagination": {
+              "parameters": {
+                "parameters": [
+                  {
+                    "name": "page",
+                    "value": "={{ $pageCount + 1 }}"
+                  }
+                ]
+              },
+              "paginationCompleteWhen": "other",
+              "completeExpression": "={{ $response.body._embedded.leads.length < 250 }}",
+              "limitPagesFetched": true,
+              "requestInterval": 200
+            }
+          }
+        }
+      },
+      "id": "845b4a2e-bbee-4775-a0d5-d08e29110693",
+      "name": "Consultar Leads Kommo",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        736,
+        96
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "rsBfubSe7f022RsT",
+          "name": "Kommo Meditec Token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const PIPELINE_VENTAS = 12677012;\nconst PIPELINE_RECURRENTES = 12676956;\nconst STAGE_WON_ID = 142;\nconst FIELD_BUDGET_CODE = 'budget';\nconst FIELD_BUDGET_ID = 142;\nconst leads = items.flatMap(i => i.json._embedded?.leads ?? []);\nfunction obtenerPresupuesto(lead) {\n  const fields = lead.custom_fields_values ?? [];\n  const porCodigo = fields.find(f => String(f.field_code ?? '').toLowerCase() === FIELD_BUDGET_CODE);\n  return porCodigo ?? fields.find(f => f.field_id === FIELD_BUDGET_ID) ?? null;\n}\nfunction parsePrecio(valor) {\n  if (valor === null || valor === undefined) return null;\n  const s = String(valor).trim();\n  if (s === '') return null;\n  const tieneComa = s.includes(',');\n  const tienePunto = s.includes('.');\n  let n;\n  if (tieneComa && tienePunto) {\n    if (s.lastIndexOf(',') > s.lastIndexOf('.')) { n = Number(s.split('.').join('').replace(',', '.')); }\n    else { n = Number(s.split(',').join('')); }\n  } else if (tieneComa) {\n    const partes = s.split(',');\n    const esMiles = partes.slice(1).every(p => p.length === 3) && partes[0].length <= 3;\n    n = esMiles ? Number(partes.join('')) : Number(s.replace(',', '.'));\n  } else { n = Number(s); }\n  return Number.isFinite(n) ? n : null;\n}\nlet suma = 0;\nlet countWon = 0;\nlet sinPrecio = 0;\nfor (const lead of leads) {\n  if (lead.pipeline_id !== PIPELINE_VENTAS && lead.pipeline_id !== PIPELINE_RECURRENTES) continue;\n  if (lead.status_id !== STAGE_WON_ID) continue;\n  countWon++;\n  const precio = parsePrecio(obtenerPresupuesto(lead)?.values?.[0]?.value);\n  if (precio === null) { sinPrecio++; continue; }\n  suma += precio;\n}\nconst promedio = countWon > 0 ? suma / countWon : 0;\nconst formatear = n => '$' + n.toLocaleString('es-EC', { minimumFractionDigits: 2, maximumFractionDigits: 2 });\nreturn [{ json: { text_main: formatear(promedio), text_sub: String(countWon) + ' ventas ganadas', raw_sum: suma, raw_won: countWon, raw_sin_precio: sinPrecio, raw_avg: promedio } }];"
+      },
+      "id": "c0436731-be0f-4c77-b64d-fd1c52fa039e",
+      "name": "Calcular Ticket Promedio",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        944,
+        96
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              }
+            ]
+          }
+        }
+      },
+      "id": "2650a1b6-869c-4a2b-b0ac-b3e254275f8e",
+      "name": "Responder al Widget",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1184,
+        96
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## Calcula cuánto se está ganando en promedio por venta.\nSuma del campo presupuesto (`budget`) de los leads ganados ÷ total de leads ganados.",
+        "height": 192
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -128,
+        0
+      ],
+      "typeVersion": 1,
+      "id": "76ba1fc6-fecb-496d-9a6b-3b84036dda32",
+      "name": "Sticky Note1"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook Widget": {
+      "main": [
+        [
+          {
+            "node": "Consultar Leads Kommo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Consultar Leads Kommo": {
+      "main": [
+        [
+          {
+            "node": "Calcular Ticket Promedio",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calcular Ticket Promedio": {
+      "main": [
+        [
+          {
+            "node": "Responder al Widget",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "c975df55-c95b-4bb7-89e3-29567a8420e8",
+  "meta": {
+    "instanceId": "e6ed2619c97de62ff0de8886ebe0c22aed325375b3b9a3c4b1a4e4dab3199a78"
+  },
+  "nodeGroups": [],
+  "id": "qBlnmyRqmUxqmqRT",
+  "tags": []
+}
