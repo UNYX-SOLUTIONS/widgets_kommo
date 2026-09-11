@@ -1,5 +1,5 @@
 {
-  "name": "Kommo Widget - Conversion Cotizacion Enviada",
+  "name": "Kommo Widget - Tasa de Conversion Cotizacion - Ganada",
   "nodes": [
     {
       "parameters": {
@@ -70,6 +70,14 @@
             {
               "name": "filter[pipeline_id][1]",
               "value": "12676956"
+            },
+            {
+              "name": "filter[closed_at][from]",
+              "value": "={{ $('Webhook Widget').item.json.query.from ? $('Webhook Widget').item.json.query.from : 0 }}"
+            },
+            {
+              "name": "filter[closed_at][to]",
+              "value": "={{ $('Webhook Widget').item.json.query.to ? $('Webhook Widget').item.json.query.to : 9999999999 }}"
             }
           ]
         },
@@ -186,12 +194,12 @@
       ]
     }
   },
-  "active": false,
+  "active": true,
   "settings": {
     "executionOrder": "v1",
     "binaryMode": "separate"
   },
-  "versionId": "d02ef0cf-7595-44dc-acde-aef96b98d0b3",
+  "versionId": "c42c7855-8690-4a2e-9863-a12ac703012f",
   "meta": {
     "instanceId": "e6ed2619c97de62ff0de8886ebe0c22aed325375b3b9a3c4b1a4e4dab3199a78"
   },
