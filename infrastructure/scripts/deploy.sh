@@ -3,7 +3,7 @@
 set -e
 
 # Ruta del proyecto en el VPS (cambiar si se clonó en otro lado)
-PROJECT_DIR="/docker/widgets-kommo"
+PROJECT_DIR="cd ../.."
 ENV_FILE="$PROJECT_DIR/.env.production"
 
 # El .env.production es OPCIONAL: este proyecto no tiene secretos.
