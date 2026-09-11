@@ -7,16 +7,47 @@
     <link rel="stylesheet" type="text/css" href='//fonts.googleapis.com/css?family=PT+Sans:400,700&subset=latin,cyrillic-ext'>
     <style type="text/css">
         * { box-sizing: border-box; text-rendering: geometricPrecision; -webkit-font-smoothing: antialiased; }
-        html, body { padding: 0; margin: 0; font-family: 'PT Sans'; color: #2E3640; background: transparent; }
-        a, a:active, a:hover, a:visited { color: #2E3640; text-decoration: none; }
+        :root {
+            color-scheme: light dark;
+            --widget-text: #2E3640;
+            --widget-green: #41cfc4;
+            --widget-red: #fe6e6e;
+        }
+        :root[data-theme="dark"] {
+            --widget-text: #e8ebef;
+            --widget-green: #3fdbd0;
+            --widget-red: #ff8f8f;
+        }
+        html, body { padding: 0; margin: 0; font-family: 'PT Sans'; color: var(--widget-text); background: transparent; }
+        a, a:active, a:hover, a:visited { color: var(--widget-text); text-decoration: none; }
         .cell-wrapper { padding: 20px 15px 15px 15px; }
         .cell-wrapper__caption { font-size: 15px; font-weight: bold; }
         .cell-wrapper__data { height: 50px; }
         .cell-wrapper__data__num { font-size: 40px; line-height: 68px; font-family: 'Open Sans', sans-serif; }
         .cell-wrapper__bottom { margin-top: 15px; font-size: 18px; font-family: 'Open Sans', sans-serif; }
-        .cell-wrapper__bottom.red, .cell-wrapper__bottom.red a { color: #fe6e6e; }
-        .cell-wrapper__bottom.green, .cell-wrapper__bottom.green a { color: #41cfc4; }
+        .cell-wrapper__bottom.red, .cell-wrapper__bottom.red a { color: var(--widget-red); }
+        .cell-wrapper__bottom.green, .cell-wrapper__bottom.green a { color: var(--widget-green); }
     </style>
+    <script>
+        // Detecta el tema de Kommo: param ?theme=dark/light o el del sistema
+        (function () {
+            function applyTheme() {
+                const params = new URLSearchParams(window.location.search);
+                const fromUrl = params.get('theme') || params.get('kommo_theme');
+                let theme;
+                if (fromUrl === 'dark' || fromUrl === 'light') {
+                    theme = fromUrl;
+                } else {
+                    theme = (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+                }
+                document.documentElement.setAttribute('data-theme', theme);
+            }
+            applyTheme();
+            if (window.matchMedia) {
+                window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyTheme);
+            }
+        })();
+    </script>
 </head>
 <body>
     <div class="cell-wrapper">
