@@ -30,9 +30,12 @@ widgets_kommo/
 ```bash
 git clone <url-del-repo> /docker/widgets-kommo
 cd /docker/widgets-kommo
-cp .env.example .env.production   # revisar WIDGETS_DOMAIN
 bash infrastructure/scripts/deploy.sh
 ```
+
+No necesita `.env` ni credenciales (no hay secretos en este repo). El dominio
+viene por defecto; si quieres cambiarlo, `cp .env.example .env.production` y
+edítalo.
 
 Ver `DEPLOYMENT-VPS.md` para el detalle completo (DNS, Traefik, n8n, Kommo).
 

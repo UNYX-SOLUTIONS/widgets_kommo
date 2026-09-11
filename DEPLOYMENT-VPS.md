@@ -24,24 +24,33 @@ VPS Global
 ```bash
 git clone <url-del-repo> /docker/widgets-kommo
 cd /docker/widgets-kommo
+```
 
+**No hace falta ningún `.env` ni credenciales**: este proyecto no tiene
+secretos (los webhooks/tokens viven en los HTML y en n8n). El dominio ya viene
+por defecto (`widgets.unyxsolutions.com`) en el `docker-compose.yml`.
+
+Solo si quieres cambiar el dominio, puerto o red, crea el archivo opcional:
+
+```bash
 cp .env.example .env.production
-nano .env.production      # revisa las variables (abajo)
+nano .env.production      # sobrescribir lo necesario
 ```
 
 > Si clonas en otra ruta, cambia `PROJECT_DIR` al inicio de
 > `infrastructure/scripts/deploy.sh`.
 
-Variables de `.env.production` (los valores por defecto ya sirven):
+Variables de `.env.production` (todas opcionales, solo para sobrescribir los
+valores por defecto):
 
-| Variable | Qué poner |
-|---|---|
-| `WIDGETS_DOMAIN` | `widgets.unyxsolutions.com` (el dominio del widget) |
-| `WIDGETS_HTTP_PORT` | `8081` (solo local en el VPS; cambiar si está ocupado) |
-| `TRAEFIK_NETWORK` | `unyx-widgets-front` (red compartida con Traefik) |
-| `TRAEFIK_CONTAINER` | `traefik` (nombre del contenedor de Traefik en el VPS) |
+| Variable | Valor por defecto | Qué poner |
+|---|---|---|
+| `WIDGETS_DOMAIN` | `widgets.unyxsolutions.com` | el dominio del widget |
+| `WIDGETS_HTTP_PORT` | `8081` | puerto local en el VPS (cambiar si está ocupado) |
+| `TRAEFIK_NETWORK` | `unyx-widgets-front` | red compartida con Traefik |
+| `TRAEFIK_CONTAINER` | `traefik` | nombre del contenedor de Traefik en el VPS |
 
-> `.env.production` está en `.gitignore`: los secretos nunca se versionan.
+> `.env.production` está en `.gitignore`: si lo creas, no se versiona.
 
 ## Paso 1 — DNS (una sola vez)
 

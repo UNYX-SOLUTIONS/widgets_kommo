@@ -21,7 +21,7 @@ services:
     labels:
       - "traefik.enable=true"
 
-      - "traefik.http.routers.unyx-widgets.rule=Host(`${WIDGETS_DOMAIN}`)"
+      - "traefik.http.routers.unyx-widgets.rule=Host(`${WIDGETS_DOMAIN:-widgets.unyxsolutions.com}`)"
       - "traefik.http.routers.unyx-widgets.entrypoints=websecure"
       - "traefik.http.routers.unyx-widgets.tls=true"
       - "traefik.http.routers.unyx-widgets.tls.certresolver=letsencrypt"
