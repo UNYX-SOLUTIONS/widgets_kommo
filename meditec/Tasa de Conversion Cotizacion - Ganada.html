@@ -12,11 +12,13 @@
             --widget-text: #2E3640;
             --widget-green: #41cfc4;
             --widget-red: #fe6e6e;
+            --widget-border: rgba(46, 56, 64, 0.15);
         }
         :root[data-theme="dark"] {
             --widget-text: #e8ebef;
             --widget-green: #3fdbd0;
             --widget-red: #ff8f8f;
+            --widget-border: rgba(232, 235, 239, 0.25);
         }
         html, body { padding: 0; margin: 0; font-family: 'PT Sans'; color: var(--widget-text); background: transparent; }
         a, a:active, a:hover, a:visited { color: var(--widget-text); text-decoration: none; }
@@ -27,6 +29,11 @@
         .cell-wrapper__bottom { margin-top: 15px; font-size: 18px; font-family: 'Open Sans', sans-serif; }
         .cell-wrapper__bottom.red, .cell-wrapper__bottom.red a { color: var(--widget-red); }
         .cell-wrapper__bottom.green, .cell-wrapper__bottom.green a { color: var(--widget-green); }
+        .users-list { margin-top: 12px; border-top: 1px solid var(--widget-border); padding-top: 8px; max-height: 200px; overflow-y: auto; }
+        .user-row { display: flex; align-items: baseline; gap: 8px; font-size: 13px; padding: 3px 0; }
+        .user-row .user-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .user-row .user-value { font-weight: bold; white-space: nowrap; }
+        .user-row .user-sub { opacity: 0.65; font-size: 12px; white-space: nowrap; }
     </style>
     <script>
         // Detecta el tema de Kommo: param ?theme=dark/light o el del sistema
@@ -59,10 +66,36 @@
             <a href="#">--%</a>
         </div>
     </div>
+    <div class="users-list" id="users-list"></div>
 
     <script>
         // ⚠️ IMPORTANTE: Reemplaza esto con la URL de PRODUCCIÓN de tu Webhook en n8n
         const N8N_WEBHOOK_URL = 'https://flow.unyxsolutions.com/webhook/kommo-widget-conversion';
+
+        const USER_NAMES = {
+            '11370947': 'Scarlet Espinoza',
+            '11371087': 'Jessica Esparza',
+            '11376707': 'Daniela Ramirez',
+            '12394127': 'Daysi Vera',
+            '12599488': 'Jonathan Gómez',
+            '14211776': 'Marco Diaz',
+            '15567535': 'Jhonston Benjumea',
+            '15641264': 'Javier Mata',
+            '15711252': 'Tamara Thomas',
+            '15768396': 'John Ponce'
+        };
+
+        function renderUsers(perUser) {
+            const container = document.getElementById('users-list');
+            if (!container) return;
+            const rows = (perUser || []).filter(u => USER_NAMES[String(u.user_id)]);
+            if (!rows.length) { container.innerHTML = ''; return; }
+            container.innerHTML = rows.map(u => {
+                const name = USER_NAMES[String(u.user_id)];
+                const sub = u.text_sub ? '<span class="user-sub">' + u.text_sub + '</span>' : '';
+                return '<div class="user-row"><span class="user-name">' + name + '</span><span class="user-value">' + u.text_main + '</span>' + sub + '</div>';
+            }).join('');
+        }
 
         function parseDate(value) {
             if (!value || value === 'false') return null;
@@ -117,20 +150,24 @@
         async function fetchData() {
             try {
                 const response = await fetch(buildWebhookUrl());
-                const data = await response.json();
+                let data = await response.json();
+                if (Array.isArray(data)) data = data.length ? data[0] : {};
 
-                document.getElementById('main-data').innerText = data.text_main;
-                
+                document.getElementById('main-data').innerText = data.text_main || '0 de 0';
+
                 const subDataElement = document.getElementById('sub-data');
-                subDataElement.querySelector('a').innerText = data.text_sub;
+                subDataElement.querySelector('a').innerText = data.text_sub || '0.0%';
 
-                if (parseFloat(data.text_sub) < 50) {
-                    subDataElement.classList.remove('green');
-                    subDataElement.classList.add('red');
-                } else {
+                const value = parseFloat(data.text_sub);
+                if (isNaN(value) || value >= 50) {
                     subDataElement.classList.remove('red');
                     subDataElement.classList.add('green');
+                } else {
+                    subDataElement.classList.remove('green');
+                    subDataElement.classList.add('red');
                 }
+
+                renderUsers(data.per_user);
             } catch (error) {
                 console.error('Error:', error);
                 document.getElementById('main-data').innerText = 'Error';
