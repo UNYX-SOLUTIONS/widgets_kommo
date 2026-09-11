@@ -1,17 +1,20 @@
-#!/usr/bin/env bash
+#!/bin/bash
 
-set -euo pipefail
+set -e
 
-# Ruta del repo: se calcula sola desde la ubicación de este script
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_DIR="$(dirname "$(dirname "$SCRIPT_DIR")")"
+# Ruta del proyecto en el VPS (cambiar si se clonó en otro lado)
+PROJECT_DIR="/docker/widgets-kommo"
 ENV_FILE="$PROJECT_DIR/.env.production"
 
-cd "$PROJECT_DIR"
+echo ""
+echo "======================================"
+echo " UNYX Widgets Kommo - Deploy"
+echo "======================================"
+echo ""
 
 if [ ! -f "$ENV_FILE" ]; then
-    echo "ERROR: $ENV_FILE not found."
-    echo "       Create it from the template:  cp .env.example .env.production"
+    echo "ERROR: $ENV_FILE no existe."
+    echo "       Cópialo desde la plantilla:  cp .env.example .env.production"
     exit 1
 fi
 
@@ -20,80 +23,100 @@ source "$ENV_FILE"
 set +a
 
 NETWORK="${TRAEFIK_NETWORK:-unyx-widgets-front}"
-PORT="${WIDGETS_HTTP_PORT:-8081}"
 
-echo "========================================"
-echo "UNYX Widgets Kommo - Deployment"
-echo "========================================"
+# ==========================================
+# 1. ACTUALIZAR REPOSITORIO
+# ==========================================
+
+echo "[1/6] Actualizando repositorio..."
+
+cd "$PROJECT_DIR"
+
+git pull origin main || echo "AVISO: git pull falló (continúo con el código local)."
 
 echo ""
-echo "[1/6] Checking Traefik network '$NETWORK'..."
+echo "Repositorio actualizado."
 
-if docker network inspect "$NETWORK" > /dev/null 2>&1; then
-    echo "Network OK."
-else
-    echo "Network does not exist. Creating it..."
+# ==========================================
+# 2. RED DE TRAEFIK
+# ==========================================
+
+echo ""
+echo "[2/6] Verificando red de Traefik..."
+
+if ! docker network inspect "$NETWORK" > /dev/null 2>&1; then
+    echo "Creando red '$NETWORK'..."
     docker network create "$NETWORK"
-    echo "Network created."
 fi
 
-if [ -n "${TRAEFIK_CONTAINER:-}" ]; then
-    if docker inspect "$TRAEFIK_CONTAINER" > /dev/null 2>&1; then
-        if ! docker network inspect "$NETWORK" --format '{{range .Containers}}{{.Name}} {{end}}' | grep -qw "$TRAEFIK_CONTAINER"; then
-            echo "Connecting container '$TRAEFIK_CONTAINER' to '$NETWORK'..."
-            docker network connect "$NETWORK" "$TRAEFIK_CONTAINER"
-        fi
-    else
-        echo "WARNING: Traefik container '$TRAEFIK_CONTAINER' not found."
-        echo "         Traefik must be connected to '$NETWORK' to route HTTPS."
+if [ -n "${TRAEFIK_CONTAINER:-}" ] && docker inspect "$TRAEFIK_CONTAINER" > /dev/null 2>&1; then
+    if ! docker network inspect "$NETWORK" --format '{{range .Containers}}{{.Name}} {{end}}' | grep -qw "$TRAEFIK_CONTAINER"; then
+        echo "Conectando '$TRAEFIK_CONTAINER' a '$NETWORK'..."
+        docker network connect "$NETWORK" "$TRAEFIK_CONTAINER"
     fi
 fi
 
-echo ""
-echo "[2/6] Pulling latest code..."
+echo "Red lista."
 
-git pull --ff-only origin main || echo "WARNING: git pull failed (continue with local code)."
+# ==========================================
+# 3. VALIDAR DOCKER COMPOSE
+# ==========================================
 
 echo ""
-echo "[3/6] Validating Docker Compose..."
+echo "[3/6] Validando Docker Compose..."
 
 docker compose --env-file "$ENV_FILE" config > /dev/null
-echo "Docker Compose configuration is valid."
+
+echo "Docker Compose válido."
+
+# ==========================================
+# 4. BUILD + DEPLOY
+# ==========================================
 
 echo ""
-echo "[4/6] Building image..."
+echo "[4/6] Reconstruyendo unyx-widgets..."
 
-docker compose --env-file "$ENV_FILE" build
-
-echo ""
-echo "[5/6] Starting service..."
-
-docker compose --env-file "$ENV_FILE" up -d
+docker compose --env-file "$ENV_FILE" up -d --build
 
 echo ""
-echo "[6/6] Checking service status..."
+echo "Contenedor actualizado."
 
-sleep 3
+# ==========================================
+# 5. LIMPIEZA
+# ==========================================
+
+echo ""
+echo "[5/6] Limpiando imágenes Docker antiguas..."
+
+docker image prune -f
+
+# ==========================================
+# 6. ESTADO
+# ==========================================
+
+echo ""
+echo "[6/6] Estado final..."
+echo ""
+
 docker compose --env-file "$ENV_FILE" ps
 
 echo ""
-echo "Checking health endpoint..."
+echo "--------------------------------------"
 
-if curl -fsS "http://127.0.0.1:$PORT/health" > /dev/null; then
-    echo "Health: OK"
-else
-    echo "WARNING: health check failed."
-    echo "Check logs with: docker logs unyx-widgets"
-fi
+docker ps \
+  --filter "name=unyx-widgets" \
+  --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
 
 echo ""
-echo "========================================"
-echo "Deployment completed"
-echo "========================================"
-echo ""
-echo "Widgets available at https://${WIDGETS_DOMAIN}:"
+echo "Widgets disponibles en https://${WIDGETS_DOMAIN}:"
 for dir in */; do
     [ -d "$dir" ] || continue
+    ls "$dir"/*.html > /dev/null 2>&1 || continue
     echo "  https://${WIDGETS_DOMAIN}/${dir%/}/"
 done
+
+echo ""
+echo "======================================"
+echo " Deploy Widgets Kommo terminado"
+echo "======================================"
 echo ""

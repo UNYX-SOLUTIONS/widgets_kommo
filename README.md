@@ -6,10 +6,12 @@ Widgets de Kommo (dashboard iframes) alojados en el VPS de UNYX.
 
 ```text
 widgets_kommo/
-├── lead_cotizacion_ganada/          ← un widget de Kommo
-│   ├── lead_cotizacion_ganada_widget.html   ← el widget (iframe de Kommo)
-│   ├── test_widget_es.html                  ← página de prueba en local
-│   └── Kommo Widget - ... .json             ← flujo n8n (se importa en n8n)
+├── meditec/                          ← widgets de Meditec
+│   ├── Tasa de Conversion Cotizacion - Ganada.html   ← widget conversión
+│   ├── Ticket Promedio de Ventas Ganadas.html        ← widget ticket promedio
+│   └── backup_workflows/             ← flujos n8n (se importan en n8n, no van en la imagen)
+│       ├── Kommo Widget - Tasa de Conversion Cotizacion - Ganada.json
+│       └── Kommo Widget - Ticket Promedio de Ventas Ganadas.json
 ├── nginx/default.conf                ← config del nginx del contenedor
 ├── Dockerfile                        ← nginx:alpine + los widgets
 ├── docker-compose.yml                ← servicio + labels de Traefik
@@ -18,24 +20,25 @@ widgets_kommo/
 └── DEPLOYMENT-VPS.md                 ← guía completa para el VPS
 ```
 
-## URLs
+## URLs de producción
 
-Producción: `https://widgets.unyxsolutions.com/<carpeta>/<archivo>.html`
+- Conversión: `https://widgets.unyxsolutions.com/meditec/Tasa de Conversion Cotizacion - Ganada.html`
+- Ticket promedio: `https://widgets.unyxsolutions.com/meditec/Ticket Promedio de Ventas Ganadas.html`
 
-## Despliegue
+## Despliegue en el VPS
 
 ```bash
-cp .env.example .env.production   # solo en el VPS
+git clone <url-del-repo> /docker/widgets-kommo
+cd /docker/widgets-kommo
+cp .env.example .env.production   # revisar WIDGETS_DOMAIN
 bash infrastructure/scripts/deploy.sh
 ```
 
-Ver `DEPLOYMENT-VPS.md` para el detalle completo (DNS, Traefik, Kommo).
+Ver `DEPLOYMENT-VPS.md` para el detalle completo (DNS, Traefik, n8n, Kommo).
 
 ## Pruebas locales
 
-Abrir directamente `test_widget_es.html` en el navegador, o servir la carpeta:
-
 ```bash
 docker run --rm -p 8081:80 -v "$(pwd):/usr/share/nginx/html:ro" nginx:1.27-alpine
-# http://localhost:8081/lead_cotizacion_ganada/lead_cotizacion_ganada_widget.html
+# http://localhost:8081/meditec/Ticket Promedio de Ventas Ganadas.html
 ```

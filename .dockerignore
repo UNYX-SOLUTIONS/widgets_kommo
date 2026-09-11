@@ -5,7 +5,6 @@
 # Secrets / entorno
 .env
 .env.*
-!.env.example
 
 # Docker
 Dockerfile

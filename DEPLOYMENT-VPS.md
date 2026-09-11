@@ -15,19 +15,22 @@ carpeta se importan en n8n, no van en la imagen).
 VPS Global
 ├── traefik (HTTPS + Let's Encrypt, ya existente)
 ├── unyx-widgets-front (red Docker externa compartida con Traefik)
-└── unyx-widgets ← nginx: sirve /lead_cotizacion_ganada/…
+└── unyx-widgets ← nginx: sirve /meditec/…
                     HTTPS: https://widgets.unyxsolutions.com
 ```
 
 ## Paso 0 — Obtener el código
 
 ```bash
-git clone <url-del-repo> widgets-kommo
-cd widgets-kommo
+git clone <url-del-repo> /docker/widgets-kommo
+cd /docker/widgets-kommo
 
 cp .env.example .env.production
 nano .env.production      # revisa las variables (abajo)
 ```
+
+> Si clonas en otra ruta, cambia `PROJECT_DIR` al inicio de
+> `infrastructure/scripts/deploy.sh`.
 
 Variables de `.env.production` (los valores por defecto ya sirven):
 
@@ -54,11 +57,12 @@ bash infrastructure/scripts/deploy.sh
 
 El script hace todo, en orden:
 
-1. Crea la red `unyx-widgets-front` si no existe.
-2. Conecta el contenedor de Traefik a esa red si hace falta.
-3. Trae el último código (`git pull`).
-4. Valida y construye la imagen.
-5. Levanta `unyx-widgets` y verifica el healthcheck.
+1. Trae el último código (`git pull`).
+2. Crea la red `unyx-widgets-front` si no existe y conecta Traefik si hace falta.
+3. Valida el `docker compose config`.
+4. Reconstruye y levanta `unyx-widgets` (`up -d --build`).
+5. Limpia imágenes viejas (`docker image prune -f`).
+6. Muestra el estado final y las URLs de los widgets.
 
 Es idempotente: se puede repetir cuantas veces quieras.
 
@@ -66,16 +70,18 @@ Es idempotente: se puede repetir cuantas veces quieras.
 
 1. `docker compose --env-file .env.production ps` → `unyx-widgets` `healthy`.
 2. `curl -fsS http://127.0.0.1:8081/health` → `ok`.
-3. `curl -fsS https://widgets.unyxsolutions.com/lead_cotizacion_ganada/lead_cotizacion_ganada_widget.html`
+3. `curl -fsS "https://widgets.unyxsolutions.com/meditec/Ticket Promedio de Ventas Ganadas.html"`
    → devuelve el HTML del widget.
 4. Abre esa URL en el navegador: debe verse el widget con su dato.
 
-## Paso 4 — Registrar el widget en Kommo
+## Paso 4 — Registrar los widgets en Kommo
 
 En Kommo (Ajustes → Integraciones / Widgets de dashboard):
 
-- URL del widget:
-  `https://widgets.unyxsolutions.com/lead_cotizacion_ganada/lead_cotizacion_ganada_widget.html`
+- Conversión:
+  `https://widgets.unyxsolutions.com/meditec/Tasa de Conversion Cotizacion - Ganada.html`
+- Ticket promedio:
+  `https://widgets.unyxsolutions.com/meditec/Ticket Promedio de Ventas Ganadas.html`
 
 Cada widget nuevo tendrá su propia URL con el patrón
 `https://widgets.unyxsolutions.com/<carpeta>/<nombre>.html`.
