@@ -13,27 +13,35 @@
             --widget-green: #41cfc4;
             --widget-red: #fe6e6e;
             --widget-border: rgba(46, 56, 64, 0.15);
+            --widget-track: rgba(46, 56, 64, 0.10);
+            --widget-muted: rgba(46, 56, 64, 0.55);
         }
         :root[data-theme="dark"] {
             --widget-text: #e8ebef;
             --widget-green: #3fdbd0;
             --widget-red: #ff8f8f;
             --widget-border: rgba(232, 235, 239, 0.25);
+            --widget-track: rgba(232, 235, 239, 0.15);
+            --widget-muted: rgba(232, 235, 239, 0.55);
         }
         html, body { padding: 0; margin: 0; font-family: 'PT Sans'; color: var(--widget-text); background: transparent; }
-        a, a:active, a:hover, a:visited { color: var(--widget-text); text-decoration: none; }
-        .cell-wrapper { padding: 20px 15px 15px 15px; }
-        .cell-wrapper__caption { font-size: 15px; font-weight: bold; }
-        .cell-wrapper__data { height: 50px; }
-        .cell-wrapper__data__num { font-size: 40px; line-height: 68px; font-family: 'Open Sans', sans-serif; }
-        .cell-wrapper__bottom { margin-top: 15px; font-size: 18px; font-family: 'Open Sans', sans-serif; }
-        .cell-wrapper__bottom.red, .cell-wrapper__bottom.red a { color: var(--widget-red); }
-        .cell-wrapper__bottom.green, .cell-wrapper__bottom.green a { color: var(--widget-green); }
-        .users-list { margin-top: 12px; border-top: 1px solid var(--widget-border); padding-top: 8px; max-height: 200px; overflow-y: auto; }
-        .user-row { display: flex; align-items: baseline; gap: 8px; font-size: 13px; padding: 3px 0; }
-        .user-row .user-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .user-row .user-value { font-weight: bold; white-space: nowrap; }
-        .user-row .user-sub { opacity: 0.65; font-size: 12px; white-space: nowrap; }
+        .k-head { padding: 14px 14px 8px 14px; }
+        .k-title { margin: 0 0 10px 0; font-size: 15px; font-weight: bold; }
+        .k-big-value { font-size: 42px; font-weight: bold; line-height: 1.1; color: var(--widget-green); white-space: nowrap; }
+        .k-big-value.red { color: var(--widget-red); }
+        .k-sub { font-size: 15px; margin-top: 6px; color: var(--widget-muted); }
+        .k-period { font-size: 11px; color: var(--widget-muted); margin-top: 4px; }
+        .k-list { border-top: 1px solid var(--widget-border); padding: 8px 14px 10px 14px; max-height: 230px; overflow-y: auto; }
+        .k-item { padding: 5px 0 7px 0; }
+        .k-item-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-size: 12.5px; }
+        .k-item-title { display: flex; align-items: center; gap: 6px; min-width: 0; flex: 1; }
+        .k-dot { width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; }
+        .k-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .k-item-counts { display: flex; align-items: baseline; gap: 6px; white-space: nowrap; }
+        .k-value { font-weight: bold; }
+        .k-sub2 { color: var(--widget-muted); font-size: 11.5px; }
+        .k-bar { margin-top: 4px; height: 4px; border-radius: 2px; background: var(--widget-track); overflow: hidden; }
+        .k-bar-fill { height: 100%; width: 0; border-radius: 2px; transition: width 0.6s ease; }
     </style>
     <script>
         // Detecta el tema de Kommo: param ?theme=dark/light o el del sistema
@@ -57,16 +65,13 @@
     </script>
 </head>
 <body>
-    <div class="cell-wrapper">
-        <div class="cell-wrapper__caption">Conversión Cotización</div>
-        <div class="cell-wrapper__data">
-            <div class="cell-wrapper__data__num" id="main-data">Cargando...</div>
-        </div>
-        <div class="cell-wrapper__bottom green" id="sub-data">
-            <a href="#">--%</a>
-        </div>
+    <div class="k-head">
+        <h4 class="k-title">Conversión Cotización</h4>
+        <div class="k-big-value" id="big-data">Cargando...</div>
+        <div class="k-sub" id="sub-data">--%</div>
+        <div class="k-period" id="period-data"></div>
     </div>
-    <div class="users-list" id="users-list"></div>
+    <div class="k-list" id="users-list"></div>
 
     <script>
         // ⚠️ IMPORTANTE: Reemplaza esto con la URL de PRODUCCIÓN de tu Webhook en n8n
@@ -85,17 +90,9 @@
             '15768396': 'John Ponce'
         };
 
-        function renderUsers(perUser) {
-            const container = document.getElementById('users-list');
-            if (!container) return;
-            const rows = (perUser || []).filter(u => USER_NAMES[String(u.user_id)]);
-            if (!rows.length) { container.innerHTML = ''; return; }
-            container.innerHTML = rows.map(u => {
-                const name = USER_NAMES[String(u.user_id)];
-                const sub = u.text_sub ? '<span class="user-sub">' + u.text_sub + '</span>' : '';
-                return '<div class="user-row"><span class="user-name">' + name + '</span><span class="user-value">' + u.text_main + '</span>' + sub + '</div>';
-            }).join('');
-        }
+        const USER_COLORS = ['#41cfc4', '#5b8def', '#a97df0', '#f2a35c', '#e372b8', '#62c38f', '#ee7f7f', '#4cc0e4', '#b8ab6a', '#94a3b8'];
+        const USER_COLOR = {};
+        Object.keys(USER_NAMES).forEach((id, i) => { USER_COLOR[id] = USER_COLORS[i % USER_COLORS.length]; });
 
         function parseDate(value) {
             if (!value || value === 'false') return null;
@@ -109,7 +106,7 @@
             return isNaN(d.getTime()) ? null : d;
         }
 
-        function buildWebhookUrl() {
+        function buildRequest() {
             const params = new URLSearchParams(window.location.search);
             const period = params.get('period') || '';
             const now = new Date();
@@ -141,36 +138,99 @@
                 from = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
             }
 
+            const hasPeriod = !!period || !!(dateFrom || dateTo);
+
             const qs = new URLSearchParams();
             qs.set('from', Math.floor(from / 1000));
             qs.set('to', Math.floor(to / 1000));
-            return N8N_WEBHOOK_URL + '?' + qs.toString();
+            return {
+                url: N8N_WEBHOOK_URL + '?' + qs.toString(),
+                fromDate: new Date(from),
+                toDate: new Date(to),
+                hasPeriod: hasPeriod
+            };
+        }
+
+        function fmtDate(d) {
+            const p = (n) => String(n).padStart(2, '0');
+            return p(d.getDate()) + '/' + p(d.getMonth() + 1) + '/' + d.getFullYear();
+        }
+
+        function setPeriodCaption(req) {
+            const el = document.getElementById('period-data');
+            if (!el) return;
+            if (!req.hasPeriod) { el.innerText = ''; return; }
+            const fromS = fmtDate(req.fromDate);
+            const toS = fmtDate(req.toDate);
+            el.innerText = fromS === toS ? fromS : fromS + ' - ' + toS;
+        }
+
+        function fitBigText() {
+            const el = document.getElementById('big-data');
+            const head = document.querySelector('.k-head');
+            if (!el || !head) return;
+            const maxW = head.clientWidth - 28;
+            let size = 42;
+            el.style.fontSize = size + 'px';
+            while (size > 20 && el.scrollWidth > maxW) {
+                size -= 2;
+                el.style.fontSize = size + 'px';
+            }
+        }
+
+        let resizeTimer = null;
+        window.addEventListener('resize', function () {
+            clearTimeout(resizeTimer);
+            resizeTimer = setTimeout(fitBigText, 150);
+        });
+
+        function renderUsers(perUser) {
+            const container = document.getElementById('users-list');
+            if (!container) return;
+            const rows = (perUser || []).filter(u => USER_NAMES[String(u.user_id)]);
+            if (!rows.length) { container.innerHTML = ''; return; }
+            container.innerHTML = rows.map(u => {
+                const name = USER_NAMES[String(u.user_id)];
+                const color = USER_COLOR[String(u.user_id)] || '#41cfc4';
+                const total = (u.raw_won || 0) + (u.raw_lost || 0);
+                const pct = total > 0 ? Math.round(((u.raw_won || 0) / total) * 100) : 0;
+                const sub = u.text_sub ? '<span class="k-sub2">' + u.text_sub + '</span>' : '';
+                return '<div class="k-item">'
+                    + '<div class="k-item-head">'
+                    + '<div class="k-item-title"><span class="k-dot" style="background:' + color + '"></span><span class="k-name">' + name + '</span></div>'
+                    + '<div class="k-item-counts"><span class="k-value">' + u.text_main + '</span>' + sub + '</div>'
+                    + '</div>'
+                    + '<div class="k-bar"><div class="k-bar-fill" style="background:' + color + '" data-width="' + pct + '%"></div></div>'
+                    + '</div>';
+            }).join('');
+            requestAnimationFrame(() => requestAnimationFrame(() => {
+                container.querySelectorAll('.k-bar-fill').forEach(el => {
+                    el.style.width = el.dataset.width;
+                });
+            }));
         }
 
         async function fetchData() {
             try {
-                const response = await fetch(buildWebhookUrl());
+                const req = buildRequest();
+                const response = await fetch(req.url);
                 let data = await response.json();
                 if (Array.isArray(data)) data = data.length ? data[0] : {};
 
-                document.getElementById('main-data').innerText = data.text_main || '0 de 0';
-
-                const subDataElement = document.getElementById('sub-data');
-                subDataElement.querySelector('a').innerText = data.text_sub || '0.0%';
+                const bigElement = document.getElementById('big-data');
+                bigElement.innerText = data.text_main || '0 de 0';
 
                 const value = parseFloat(data.text_sub);
-                if (isNaN(value) || value >= 50) {
-                    subDataElement.classList.remove('red');
-                    subDataElement.classList.add('green');
-                } else {
-                    subDataElement.classList.remove('green');
-                    subDataElement.classList.add('red');
-                }
+                bigElement.classList.toggle('red', !isNaN(value) && value < 50);
 
+                document.getElementById('sub-data').innerText = data.text_sub || '0.0%';
+                setPeriodCaption(req);
                 renderUsers(data.per_user);
+
+                requestAnimationFrame(() => requestAnimationFrame(fitBigText));
             } catch (error) {
                 console.error('Error:', error);
-                document.getElementById('main-data').innerText = 'Error';
+                document.getElementById('big-data').innerText = 'Error';
             }
         }
         fetchData();
