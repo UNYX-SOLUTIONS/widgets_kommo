@@ -60,7 +60,7 @@ Un único ajuste, obligatorio al instalar:
 |---|---|
 | *URL de los webhooks de n8n* | `https://flow.unyxsolutions.com/webhook/unyx-<cliente>` |
 
-Ejemplos: `…/webhook/unyx-meditec`, `…/webhook/unyx-altosa`. El widget añade
+Ejemplos: `…/webhook/unyx-meditec`, `…/webhook/unyx-luxviajes`. El widget añade
 `/verificar-cliente` y `/crear-lead`.
 
 Si se deja vacío, el widget muestra «configuración incompleta» y no llama a

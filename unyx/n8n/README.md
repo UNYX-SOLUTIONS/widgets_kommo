@@ -14,6 +14,8 @@ workflows con su propia credencial.** El widget es el mismo ZIP para todos.
   no hay tokens en el código ni en el widget.
 - Los workflows de Meditec ya generados:
   `unyx-meditec-verificar-cliente.json`, `unyx-meditec-crear-lead.json`
+- Los de LuxViajes (preparados, pendientes de confirmar credencial):
+  `unyx-luxviajes-verificar-cliente.json`, `unyx-luxviajes-crear-lead.json`
 
 No se toca ni se reimporta ningún workflow existente
 (`kommo-widget-conversion`, `kommo-widget-ticket-promedio`, `kommo-cobranzas-*`).
@@ -82,9 +84,44 @@ ella. La guarda es lo que hace segura la reutilización.
      "slug": "altosa",
      "nombre": "Altosa",
      "subdominio": "altosa",
-     "credencial": { "id": "<id en n8n>", "name": "Kommo Altosa Token" }
+     "credencial": { "id": "<id en n8n>", "name": "Kommo Altosa Token", "tipo": "httpHeaderAuth" },
+     "pipelinesExcluidos": []
    }
    ```
+
+   - `credencial.tipo` es `httpHeaderAuth` (cabecera `Authorization: Bearer <token>`) o
+     `httpBearerAuth` (el token solo, como valor de la credencial). **Debe
+     coincidir con el tipo real en n8n**, o el nodo HTTP queda sin credencial.
+   - `pipelinesExcluidos` son los pipelines que **no** cuentan como atención
+     activa. Por defecto `[]`.
+
+## Qué archivos se importan en n8n
+
+| Archivo | ¿Importar? |
+|---|---|
+| `unyx-<cliente>-verificar-cliente.json` | **Sí** |
+| `unyx-<cliente>-crear-lead.json` | **Sí** |
+| `clientes.json` | No — configuración del generador |
+| `build.js` | No — genera los workflow JSON |
+| `code/*.js` | No — lógica que `build.js` incrusta en los JSON |
+| `test/logic.test.js` | No — pruebas locales |
+| `README.md` | No |
+| `Leads Duplicados.json` | No — es un flujo existente de LuxViajes, ajeno a este widget |
+
+Importar **solo el par del cliente que se va a activar**. Los demás pares
+pueden quedarse sin importar hasta que ese cliente se active.
+
+## Pipelines excluidos
+
+El flujo existente de LuxViajes (`Leads Duplicados.json`) ignora cuatro
+pipelines al avisar de duplicados: `13416240, 13629516, 13629520, 13680940`.
+En esa cuenta un lead en uno de esos pipelines no debería bloquear la creación
+de otro, así que el widget replica la misma exclusión vía
+`pipelinesExcluidos` en `clientes.json`.
+
+Revisar este punto con el cliente: el aviso por nota y el bloqueo del widget
+pueden tener criterios distintos a propósito (por ejemplo, el widget podría ser
+más estricto). Cambiarlo es editar la lista en `clientes.json` y regenerar.
 
 4. `node unyx/n8n/build.js` (o `node unyx/n8n/build.js altosa` para uno solo).
 5. Importar los dos JSON nuevos en n8n y activarlos.

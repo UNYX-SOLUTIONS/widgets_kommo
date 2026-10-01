@@ -28,12 +28,17 @@ function code(cliente, ...files) {
     .map(read)
     .join('\n\n')
     .replace(/__SUBDOMINIO__/g, cliente.subdominio)
-    .replace(/__CLIENTE__/g, cliente.nombre);
+    .replace(/__CLIENTE__/g, cliente.nombre)
+    .replace(/__PIPELINES_EXCLUIDOS__/g, JSON.stringify(cliente.pipelinesExcluidos || []));
+}
+
+function credencialTipo(cliente) {
+  return cliente.credencial.tipo === 'httpBearerAuth' ? 'httpBearerAuth' : 'httpHeaderAuth';
 }
 
 function credentials(cliente) {
   return {
-    httpHeaderAuth: {
+    [credencialTipo(cliente)]: {
       id: cliente.credencial.id,
       name: cliente.credencial.name,
     },
@@ -45,7 +50,7 @@ function httpRequest(cliente, name, id, position, parameters) {
     parameters: Object.assign(
       {
         authentication: 'genericCredentialType',
-        genericAuthType: 'httpHeaderAuth',
+        genericAuthType: credencialTipo(cliente),
         options: { response: { response: { responseFormat: 'json' } } },
       },
       parameters

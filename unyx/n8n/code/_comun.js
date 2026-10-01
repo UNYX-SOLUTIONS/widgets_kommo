@@ -9,8 +9,9 @@
 // la regla funciona igual en cualquier cuenta y en cualquier pipeline.
 // =============================================================
 
-function unyxIsActive(lead) {
+function unyxIsActive(lead, data) {
   if (!lead || lead.is_deleted) return false;
+  if (data && (data.pipelinesExcluidos || []).includes(lead.pipeline_id)) return false;
   return !lead.closed_at;
 }
 
@@ -28,13 +29,16 @@ function unyxDecorate(lead, data) {
 // Devuelve solo las atenciones activas, de la más reciente a la más antigua.
 function unyxActiveLeads(leads, data) {
   return (leads || [])
-    .filter((lead) => unyxIsActive(lead))
+    .filter((lead) => unyxIsActive(lead, data))
     .map((lead) => unyxDecorate(lead, data))
     .sort((a, b) => b.created_at - a.created_at);
 }
 
-function unyxClosedCount(leads) {
-  return (leads || []).filter((lead) => lead && !lead.is_deleted && lead.closed_at).length;
+function unyxClosedCount(leads, data) {
+  const excluded = (data && data.pipelinesExcluidos) || [];
+  return (leads || []).filter(
+    (lead) => lead && !lead.is_deleted && !excluded.includes(lead.pipeline_id) && lead.closed_at
+  ).length;
 }
 
 // Regla de decisión compartida por los dos workflows.

@@ -19,6 +19,7 @@ return [{
   json: {
     ...base,
     subdomain: '__SUBDOMINIO__',
+    pipelinesExcluidos: __PIPELINES_EXCLUIDOS__,
     userMap,
   },
 }];

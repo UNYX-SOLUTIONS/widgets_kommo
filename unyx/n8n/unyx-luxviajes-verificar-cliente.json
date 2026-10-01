@@ -1,10 +1,10 @@
 {
-  "name": "UNYX - Meditec - Verificar Cliente",
+  "name": "UNYX - LuxViajes - Verificar Cliente",
   "nodes": [
     {
       "parameters": {
         "httpMethod": "POST",
-        "path": "unyx-meditec/verificar-cliente",
+        "path": "unyx-luxviajes/verificar-cliente",
         "responseMode": "responseNode",
         "options": {
           "allowedOrigins": "*"
@@ -32,7 +32,7 @@
           "conditions": [
             {
               "id": "ifv-0000-0000-0000-000000000000-cond",
-              "leftValue": "={{ String($json.body && $json.body.account || \"\").trim().toLowerCase() === \"meditecec\" }}",
+              "leftValue": "={{ String($json.body && $json.body.account || \"\").trim().toLowerCase() === \"agencialuxviajes\" }}",
               "rightValue": "",
               "operator": {
                 "type": "boolean",
@@ -117,7 +117,7 @@
     {
       "parameters": {
         "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
+        "genericAuthType": "httpBearerAuth",
         "options": {
           "response": {
             "response": {
@@ -126,7 +126,7 @@
           }
         },
         "method": "GET",
-        "url": "https://meditecec.kommo.com/api/v4/contacts",
+        "url": "https://agencialuxviajes.kommo.com/api/v4/contacts",
         "sendQuery": true,
         "queryParameters": {
           "parameters": [
@@ -154,9 +154,9 @@
         180
       ],
       "credentials": {
-        "httpHeaderAuth": {
-          "id": "rsBfubSe7f022RsT",
-          "name": "Kommo Meditec Token"
+        "httpBearerAuth": {
+          "id": "7VB4zRZNA0UkBt6D",
+          "name": "Bearer Auth account"
         }
       }
     },
@@ -176,7 +176,7 @@
     {
       "parameters": {
         "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
+        "genericAuthType": "httpBearerAuth",
         "options": {
           "response": {
             "response": {
@@ -185,7 +185,7 @@
           }
         },
         "method": "GET",
-        "url": "https://meditecec.kommo.com/api/v4/users",
+        "url": "https://agencialuxviajes.kommo.com/api/v4/users",
         "sendQuery": true,
         "queryParameters": {
           "parameters": [
@@ -205,15 +205,15 @@
         180
       ],
       "credentials": {
-        "httpHeaderAuth": {
-          "id": "rsBfubSe7f022RsT",
-          "name": "Kommo Meditec Token"
+        "httpBearerAuth": {
+          "id": "7VB4zRZNA0UkBt6D",
+          "name": "Bearer Auth account"
         }
       }
     },
     {
       "parameters": {
-        "jsCode": "// =============================================================\n// UNYX · Verificar Cliente — Nodo \"Consolidar\"\n// Junta los datos del contacto con los nombres de los usuarios, para poder\n// evaluar cada lead. No consulta pipelines ni etapas: la regla de atención\n// activa se basa en closed_at (ver _comun.js).\n// =============================================================\nconst base = $('Unificar Contactos').first().json;\n\nconst userMap = {};\ntry {\n  const users = $('Usuarios Kommo').first().json?._embedded?.users ?? [];\n  for (const user of users) userMap[user.id] = user.name;\n} catch (error) {\n  // Sin permisos de administrador la lista de usuarios puede fallar:\n  // se degrada a mostrar solo los ids.\n}\n\nreturn [{\n  json: {\n    ...base,\n    subdomain: 'meditecec',\n    pipelinesExcluidos: [],\n    userMap,\n  },\n}];"
+        "jsCode": "// =============================================================\n// UNYX · Verificar Cliente — Nodo \"Consolidar\"\n// Junta los datos del contacto con los nombres de los usuarios, para poder\n// evaluar cada lead. No consulta pipelines ni etapas: la regla de atención\n// activa se basa en closed_at (ver _comun.js).\n// =============================================================\nconst base = $('Unificar Contactos').first().json;\n\nconst userMap = {};\ntry {\n  const users = $('Usuarios Kommo').first().json?._embedded?.users ?? [];\n  for (const user of users) userMap[user.id] = user.name;\n} catch (error) {\n  // Sin permisos de administrador la lista de usuarios puede fallar:\n  // se degrada a mostrar solo los ids.\n}\n\nreturn [{\n  json: {\n    ...base,\n    subdomain: 'agencialuxviajes',\n    pipelinesExcluidos: [13416240,13629516,13629520,13680940],\n    userMap,\n  },\n}];"
       },
       "id": "cdv-0000-0000-0000-000000000003",
       "name": "Consolidar",
@@ -261,7 +261,7 @@
     {
       "parameters": {
         "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
+        "genericAuthType": "httpBearerAuth",
         "options": {
           "response": {
             "response": {
@@ -270,7 +270,7 @@
           }
         },
         "method": "GET",
-        "url": "=https://meditecec.kommo.com/api/v4/leads?limit=250&{{ $json.leadIds.map((id) => \"filter[id][]=\" + id).join(\"&\") }}"
+        "url": "=https://agencialuxviajes.kommo.com/api/v4/leads?limit=250&{{ $json.leadIds.map((id) => \"filter[id][]=\" + id).join(\"&\") }}"
       },
       "id": "htv-0000-0000-0000-000000000005",
       "name": "Obtener Leads",
@@ -281,9 +281,9 @@
         80
       ],
       "credentials": {
-        "httpHeaderAuth": {
-          "id": "rsBfubSe7f022RsT",
-          "name": "Kommo Meditec Token"
+        "httpBearerAuth": {
+          "id": "7VB4zRZNA0UkBt6D",
+          "name": "Bearer Auth account"
         }
       }
     },
@@ -352,7 +352,7 @@
     },
     {
       "parameters": {
-        "content": "## UNYX · Verificar Cliente — Meditec\nCuenta: `meditecec.kommo.com` · Webhook: `unyx-meditec/verificar-cliente`\n\nEl asesor ingresa un celular y se comprueba si el contacto ya tiene una atención activa.\n\n- Busca el contacto por las 3 formas habituales del número y compara exacto.\n- **Atención activa = lead sin `closed_at`.** No se consultan pipelines ni etapas:\n  la regla es la misma en cualquier cuenta y no hay que configurar nada por cliente.\n- `filter[contacts][]` NO existe en la API v4: se usan los ids que devuelve `with=leads`.\n- El primer nodo rechaza el request si viene de otra cuenta de Kommo.\n\nResponde **siempre 200** con `ok:true/false`; el widget decide qué mostrar.\nGenerado por `unyx/n8n/build.js`: no editar este JSON a mano.",
+        "content": "## UNYX · Verificar Cliente — LuxViajes\nCuenta: `agencialuxviajes.kommo.com` · Webhook: `unyx-luxviajes/verificar-cliente`\n\nEl asesor ingresa un celular y se comprueba si el contacto ya tiene una atención activa.\n\n- Busca el contacto por las 3 formas habituales del número y compara exacto.\n- **Atención activa = lead sin `closed_at`.** No se consultan pipelines ni etapas:\n  la regla es la misma en cualquier cuenta y no hay que configurar nada por cliente.\n- `filter[contacts][]` NO existe en la API v4: se usan los ids que devuelve `with=leads`.\n- El primer nodo rechaza el request si viene de otra cuenta de Kommo.\n\nResponde **siempre 200** con `ok:true/false`; el widget decide qué mostrar.\nGenerado por `unyx/n8n/build.js`: no editar este JSON a mano.",
         "height": 340
       },
       "type": "n8n-nodes-base.stickyNote",
@@ -549,6 +549,6 @@
     "binaryMode": "separate",
     "callerPolicy": "workflowsFromSameOwner"
   },
-  "id": "UnyxVerifmeditec",
+  "id": "UnyxVerifluxviaj",
   "tags": []
 }

@@ -44,7 +44,16 @@ function run(snippet, ctx) {
 }
 
 const config = JSON.parse(fs.readFileSync(path.join(N8N_DIR, 'clientes.json'), 'utf8'));
-const cliente = config.clientes[0];
+const cliente = config.clientes.find((item) => item.slug === 'meditec');
+const tipoCredencial = (item) => (item.credencial.tipo === 'httpBearerAuth' ? 'httpBearerAuth' : 'httpHeaderAuth');
+
+const slugs = config.clientes.map((item) => item.slug);
+check('clientes: un slug por cliente, sin repetidos', new Set(slugs).size === slugs.length, slugs.join(', '));
+check(
+  'clientes: cada credencial tiene id, nombre y tipo válido',
+  config.clientes.every((item) => item.credencial && item.credencial.id && item.credencial.name && ['httpHeaderAuth', 'httpBearerAuth'].includes(item.credencial.tipo)),
+  JSON.stringify(config.clientes.map((item) => item.slug + ':' + item.credencial.tipo))
+);
 
 const verificar = loadWorkflow('unyx-' + cliente.slug + '-verificar-cliente.json');
 const crear = loadWorkflow('unyx-' + cliente.slug + '-crear-lead.json');
@@ -66,10 +75,11 @@ for (const workflow of [verificar, crear]) {
   check(workflow.name + ': conexiones válidas', broken.length === 0, broken.join(', '));
   check(workflow.name + ': tiene Respond to Webhook', workflow.nodes.some((n) => n.type === 'n8n-nodes-base.respondToWebhook'));
   const http = workflow.nodes.filter((n) => n.type === 'n8n-nodes-base.httpRequest');
+  const tipo = tipoCredencial(cliente);
   check(
     workflow.name + ': todos los HTTP usan la credencial del cliente',
-    http.length > 0 && http.every((n) => n.credentials.httpHeaderAuth.id === cliente.credencial.id),
-    http.length + ' nodos HTTP'
+    http.length > 0 && http.every((n) => n.credentials[tipo] && n.credentials[tipo].id === cliente.credencial.id && n.parameters.genericAuthType === tipo),
+    http.length + ' nodos HTTP · ' + tipo
   );
   check(workflow.name + ': no consulta pipelines ni etapas', !workflow.nodes.some((n) => String(n.parameters.url || '').includes('/pipelines')));
   check(workflow.name + ': cada cuenta tiene su ruta', workflow.nodes.some((n) => n.parameters.path === 'unyx-' + cliente.slug + '/verificar-cliente' || n.parameters.path === 'unyx-' + cliente.slug + '/crear-lead'));
@@ -175,6 +185,11 @@ const consolidado = run(consolidar, {
 check('consolidar: resuelve el subdominio del cliente', consolidado.subdomain === cliente.subdominio, consolidado.subdomain);
 check('consolidar: arma el mapa de usuarios', consolidado.userMap[777] === 'Otra Asesora');
 check('consolidar: no arrastra mapas de etapas', consolidado.stageMap === undefined);
+check(
+  'consolidar: respeta pipelinesExcluidos del cliente',
+  JSON.stringify(consolidado.pipelinesExcluidos) === JSON.stringify(cliente.pipelinesExcluidos || []),
+  JSON.stringify(consolidado.pipelinesExcluidos)
+);
 
 // ---------- Evaluar Atención (workflow verificar) ----------
 
@@ -226,6 +241,16 @@ check(
   'evaluar: ignora leads borrados',
   evaluarVerificar([{ id: 17, name: 'Borrado', responsible_user_id: 777, created_at: 100, closed_at: null, is_deleted: true }], 555).state === 'available'
 );
+
+const conExclusion = run(evaluar, {
+  json: {},
+  nodes: {
+    'Consolidar': [{ json: Object.assign({}, consolidado, { pipelinesExcluidos: [999] }) }],
+    'Obtener Leads': [{ json: { _embedded: { leads: [{ id: 30, name: 'Postventa', responsible_user_id: 777, pipeline_id: 999, created_at: 100, closed_at: null }] } } }],
+  },
+})[0].json;
+check('evaluar: un lead en pipeline excluido no bloquea', conExclusion.state === 'available', JSON.stringify(conExclusion.state));
+check('evaluar: el pipeline excluido tampoco cuenta como historial', conExclusion.closedLeadCount === 0, conExclusion.closedLeadCount);
 
 // ---------- Workflow crear ----------
 
