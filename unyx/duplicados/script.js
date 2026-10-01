@@ -1,128 +1,409 @@
-/* UNYX · Verificar Cliente
- * El widget solo habla con el backend UNYX. Nunca incluir aquí el token OAuth de Kommo.
- * Configure API_BASE en el servidor y exponga POST /api/kommo/client-check y
- * POST /api/kommo/leads. Consulte README.md para contrato y despliegue.
- */
-(function () {
-  'use strict';
+define(['jquery'], function () {
+  var CustomWidget = function () {
+    var self = this;
 
-  const API_BASE = window.UNYX_WIDGET_API || '';
-  const root = document.getElementById('unyx-widget');
-  if (!root) return;
+    var DEFAULT_API_URL = 'https://api.widgets.unyxsolutions.com';
+    var CAPTION_CLASS = 'unyx-caption';
 
-  let checkedPhone = '';
-  let latestResult = null;
+    var ui = {};
+    var apiUrl = DEFAULT_API_URL;
+    var sessionToken = '';
+    var account = '';
+    var userId = 0;
+    var verified = null;
+    var boundEl = null;
 
-  const q = (selector) => root.querySelector(selector);
-  const views = [...root.querySelectorAll('[data-view]')];
-  function show(name) {
-    views.forEach((view) => { view.hidden = view.dataset.view !== name; });
-  }
-  function cleanPhone() { return q('#phone').value.replace(/\D/g, ''); }
-  function fullPhone() { return '+593' + cleanPhone(); }
-  function alertBox(kind, title, text, extra = '') {
-    show('result');
-    q('#result').className = 'status ' + kind;
-    q('#result-title').textContent = title;
-    q('#result-copy').textContent = text;
-    q('#result-extra').innerHTML = extra;
-  }
-  async function api(path, body) {
-    if (!API_BASE) throw new Error('Falta configurar la URL del backend UNYX.');
-    const response = await fetch(new URL(path, API_BASE), {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      credentials: 'include', body: JSON.stringify(body)
-    });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(data.message || 'No se pudo completar la solicitud.');
-    return data;
-  }
-
-  q('#phone').addEventListener('input', (event) => {
-    event.target.value = event.target.value.replace(/\D/g, '').slice(0, 9);
-  });
-  q('#phone').addEventListener('keydown', (event) => {
-    if (event.key === 'Enter') q('#verify').click();
-  });
-
-  q('#verify').addEventListener('click', async () => {
-    const phone = cleanPhone();
-    if (!/^9\d{8}$/.test(phone)) {
-      q('#phone').setAttribute('aria-invalid', 'true');
-      q('#phone').focus();
-      return;
+    function t(key, fallback) {
+      return typeof ui[key] === 'string' && ui[key].length ? ui[key] : (fallback || key);
     }
-    q('#phone').removeAttribute('aria-invalid');
-    q('#verify').disabled = true;
-    q('#verify').innerHTML = '<span class="spinner"></span>Verificando…';
-    show('loading');
-    try {
-      const result = await api('/api/kommo/client-check', { phone: fullPhone() });
-      checkedPhone = fullPhone();
-      latestResult = result;
-      renderCheck(result);
-    } catch (error) {
-      alertBox('error', 'No pudimos realizar la consulta', error.message || 'Inténtelo nuevamente en unos segundos.');
-      q('#retry').hidden = false;
-    } finally {
-      q('#verify').disabled = false;
-      q('#verify').textContent = 'Verificar cliente →';
-    }
-  });
 
-  function renderCheck(result) {
-    const lead = result.activeLead;
-    const extra = [];
-    if (result.contactName) extra.push('<div><b>Cliente:</b> ' + escapeHtml(result.contactName) + '</div>');
-    if (lead) {
-      extra.push('<div><b>Lead:</b> ' + escapeHtml(lead.name || ('#' + lead.id)) + '</div>');
-      if (lead.statusName) extra.push('<div><b>Etapa:</b> ' + escapeHtml(lead.statusName) + '</div>');
-      if (lead.responsibleName) extra.push('<div><b>Asesor:</b> ' + escapeHtml(lead.responsibleName) + '</div>');
+    function esc(value) {
+      return String(value === undefined || value === null ? '' : value).replace(/[&<>"']/g, function (char) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char];
+      });
     }
-    if (result.state === 'available') {
-      q('#create').hidden = false;
-      alertBox('success', 'Cliente disponible', result.contactName ? 'No tiene una atención activa.' : 'No se encontraron atenciones activas para este número.', extra.join(''));
-    } else if (result.state === 'same_agent') {
-      q('#create').hidden = true;
-      alertBox('info', 'Ya está en tu cartera', 'Este cliente tiene una atención activa asignada a usted.', extra.join(''));
-    } else if (result.state === 'other_agent') {
-      q('#create').hidden = true;
-      alertBox('blocked', 'Cliente atendido por otro asesor', 'No se puede crear otro lead mientras exista una atención activa.', extra.join(''));
-    } else if (result.state === 'multiple_leads') {
-      q('#create').hidden = true;
-      alertBox('warning', 'Hay varios leads asociados', 'Revisa el historial antes de continuar.', extra.join(''));
-    } else {
-      q('#create').hidden = true;
-      alertBox('error', 'Respuesta no reconocida', 'Vuelve a intentar la consulta.');
+
+    function card() {
+      return document.querySelector('.unyx-card');
     }
-  }
 
-  q('#create').addEventListener('click', async () => {
-    if (!latestResult || latestResult.state !== 'available' || checkedPhone !== fullPhone()) return;
-    q('#create').disabled = true;
-    q('#create').textContent = 'Creando lead…';
-    try {
-      // El servidor vuelve a comprobar el estado antes de crear para evitar carreras.
-      const created = await api('/api/kommo/leads', { phone: checkedPhone, checkId: latestResult.checkId });
-      alertBox('success', 'Lead creado correctamente', 'El cliente fue asignado a usted.', '<div class="details">' + escapeHtml(created.leadName || 'Nuevo lead') + '</div>');
-      q('#open-lead').hidden = !created.leadUrl;
-      q('#open-lead').onclick = () => window.open(created.leadUrl, '_blank', 'noopener');
-    } catch (error) {
-      alertBox('error', 'No se pudo crear el lead', error.message || 'Verifique nuevamente el estado del cliente.');
-    } finally {
-      q('#create').disabled = false;
-      q('#create').textContent = 'Crear lead';
+    function el(id) {
+      return card() ? card().querySelector('#' + id) : null;
     }
-  });
 
-  q('#retry').addEventListener('click', () => q('#verify').click());
-  root.querySelectorAll('[data-reset]').forEach((button) => button.addEventListener('click', () => {
-    latestResult = null; checkedPhone = ''; q('#phone').value = ''; q('#create').hidden = true;
-    q('#open-lead').hidden = true; q('#retry').hidden = true; show('initial'); q('#phone').focus();
-  }));
+    function show(view) {
+      var views = card() ? card().querySelectorAll('[data-view]') : [];
+      Array.prototype.forEach.call(views, function (node) {
+        node.hidden = node.getAttribute('data-view') !== view;
+      });
+    }
 
-  function escapeHtml(value) {
-    return String(value).replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
-  }
-  show('initial');
-})();
+    function markup() {
+      return [
+        '<section class="unyx-card stack" aria-live="polite">',
+        '  <div class="unyx-view stack" data-view="initial">',
+        '    <div class="heading">',
+        '      <label class="label" for="unyx-phone">' + esc(t('formLabel')) + '</label>',
+        '      <p class="hint">' + esc(t('formHint')) + '</p>',
+        '    </div>',
+        '    <div class="phone">',
+        '      <span class="prefix">' + esc(t('prefix')) + '</span>',
+        '      <input id="unyx-phone" type="tel" inputmode="numeric" autocomplete="tel-national"',
+        '        maxlength="9" placeholder="' + esc(t('phonePlaceholder')) + '">',
+        '    </div>',
+        '    <p class="error-text" id="unyx-phone-error" hidden></p>',
+        '    <button id="unyx-verify" class="button" type="button" data-action="verify">' + esc(t('verify')) + '</button>',
+        '  </div>',
+        '  <div class="unyx-view" data-view="loading" hidden>',
+        '    <div class="status"><h2>' + esc(t('loadingTitle')) + '</h2><p>' + esc(t('loadingText')) + '</p></div>',
+        '  </div>',
+        '  <div class="unyx-view stack" data-view="auth" hidden>',
+        '    <div class="status warning"><h2>' + esc(t('authTitle')) + '</h2><p>' + esc(t('authText')) + '</p></div>',
+        '    <div class="actions"><button id="unyx-authorize" class="button" type="button" data-action="authorize">' + esc(t('authButton')) + '</button></div>',
+        '  </div>',
+        '  <div class="unyx-view stack" data-view="result" hidden>',
+        '    <div id="unyx-result" class="status"><h2 id="unyx-result-title"></h2><p id="unyx-result-copy"></p><div id="unyx-result-extra" class="details"></div></div>',
+        '    <div class="actions">',
+        '      <button id="unyx-create" class="button" type="button" data-action="create" hidden>' + esc(t('createLead')) + '</button>',
+        '      <button id="unyx-retry" class="button secondary" type="button" data-action="verify" hidden>' + esc(t('retry')) + '</button>',
+        '      <button class="button secondary" type="button" data-action="reset">' + esc(t('newQuery')) + '</button>',
+        '    </div>',
+        '  </div>',
+        '</section>'
+      ].join('\n');
+    }
+
+    function post(path, payload) {
+      return new Promise(function (resolve, reject) {
+        if (!apiUrl) {
+          reject(new Error(t('configErrorTitle')));
+          return;
+        }
+        var body = {};
+        Object.keys(payload).forEach(function (key) {
+          if (payload[key] !== undefined && payload[key] !== null) body[key] = String(payload[key]);
+        });
+        self.crm_post(apiUrl + path, body, function (data) {
+          if (data && data.ok === false) {
+            reject(new Error(data.message || t('genericError')));
+            return;
+          }
+          resolve(data || {});
+        }, 'json', function () {
+          reject(new Error(t('genericError')));
+        });
+      });
+    }
+
+    function renderResult(state) {
+      var title = el('unyx-result-title');
+      var copy = el('unyx-result-copy');
+      var extra = el('unyx-result-extra');
+      var box = el('unyx-result');
+      var create = el('unyx-create');
+      var retry = el('unyx-retry');
+      var lines = [];
+      var kind = 'info';
+      var heading = t('genericError');
+      var text = t('genericError');
+      var canCreate = false;
+
+      if (state.contactName) {
+        lines.push('<div><b>' + esc(t('labelClient')) + ':</b> ' + esc(state.contactName) + '</div>');
+      }
+      if (state.contactCount > 1) {
+        lines.push('<div class="small">' + esc(t('labelContactsFound')) + ': ' + esc(state.contactCount) + '</div>');
+      }
+      if (state.closedLeadCount > 0) {
+        lines.push('<div class="small">' + esc(t('labelClosedHistory')) + ': ' + esc(state.closedLeadCount) + '</div>');
+      }
+
+      function leadLine(lead) {
+        var row = ['<div><b>' + esc(t('labelLead')) + ':</b> ' + esc(lead.name || ('#' + lead.id))];
+        if (lead.statusName) row.push(' · ' + esc(lead.statusName));
+        if (lead.responsibleName) row.push(' · ' + esc(lead.responsibleName));
+        row.push('</div>');
+        if (lead.leadUrl) {
+          row.push('<div><a class="link" href="' + esc(lead.leadUrl) + '" target="_blank" rel="noopener">' + esc(t('openLeadItem')) + ' ↗</a></div>');
+        }
+        return row.join('');
+      }
+
+      if (state.state === 'available') {
+        kind = 'success';
+        heading = t('availableTitle');
+        text = state.contactName ? t('availableTextKnown') : t('availableTextUnknown');
+        canCreate = true;
+      } else if (state.state === 'same_agent') {
+        kind = 'info';
+        heading = t('sameAgentTitle');
+        text = t('sameAgentText');
+        if (state.activeLead) lines.push(leadLine(state.activeLead));
+      } else if (state.state === 'other_agent') {
+        kind = 'blocked';
+        heading = t('otherAgentTitle');
+        text = t('otherAgentText');
+        if (state.activeLead) lines.push(leadLine(state.activeLead));
+      } else if (state.state === 'multiple_leads') {
+        kind = 'warning';
+        heading = t('multipleTitle');
+        text = t('multipleText');
+        (state.leads || []).forEach(function (lead) { lines.push(leadLine(lead)); });
+      } else {
+        kind = 'error';
+        heading = t('checkErrorTitle');
+        text = state.message || t('checkErrorText');
+      }
+
+      box.className = 'status ' + kind;
+      title.textContent = heading;
+      copy.textContent = text;
+      extra.innerHTML = lines.join('');
+      create.hidden = !canCreate;
+      retry.hidden = canCreate;
+      show('result');
+    }
+
+    function renderFailure(title, text, retryable) {
+      var box = el('unyx-result');
+      box.className = 'status error';
+      el('unyx-result-title').textContent = title;
+      el('unyx-result-copy').textContent = text;
+      el('unyx-result-extra').innerHTML = '';
+      el('unyx-create').hidden = true;
+      el('unyx-retry').hidden = !retryable;
+      show('result');
+    }
+
+    function resetForm() {
+      verified = null;
+      var input = el('unyx-phone');
+      input.value = '';
+      input.removeAttribute('aria-invalid');
+      el('unyx-phone-error').hidden = true;
+      el('unyx-create').hidden = true;
+      el('unyx-retry').hidden = true;
+      show('initial');
+      input.focus();
+    }
+
+    function fullPhone() {
+      return '+593' + el('unyx-phone').value.replace(/\D/g, '');
+    }
+
+    function ensureSession() {
+      return post('/api/kommo/session', { account: account, userId: userId }).then(function (data) {
+        if (data && data.sessionToken) sessionToken = data.sessionToken;
+        return data;
+      });
+    }
+
+    function setBusy(busy) {
+      var button = el('unyx-verify');
+      button.disabled = busy;
+      button.innerHTML = busy ? '<span class="spinner"></span>' + esc(t('verifying')) : esc(t('verify'));
+    }
+
+    function verify() {
+      var input = el('unyx-phone');
+      var phone = input.value.replace(/\D/g, '');
+      var error = el('unyx-phone-error');
+      if (!/^9\d{8}$/.test(phone)) {
+        input.setAttribute('aria-invalid', 'true');
+        error.textContent = t('phoneInvalid');
+        error.hidden = false;
+        input.focus();
+        return;
+      }
+      input.removeAttribute('aria-invalid');
+      error.hidden = true;
+      show('loading');
+      setBusy(true);
+      ensureSession()
+        .then(function (session) {
+          if (session && session.authRequired) {
+            show('auth');
+            return null;
+          }
+          return post('/api/kommo/client-check', {
+            phone: '+593' + phone,
+            account: account,
+            userId: userId,
+            sessionToken: sessionToken
+          }).then(function (result) {
+            verified = result;
+            renderResult(result);
+          });
+        })
+        .catch(function (error) {
+          renderFailure(t('checkErrorTitle'), (error && error.message) || t('checkErrorText'), true);
+        })
+        .then(function () {
+          setBusy(false);
+        });
+    }
+
+    function create() {
+      if (!verified || verified.state !== 'available') return;
+      var button = el('unyx-create');
+      button.disabled = true;
+      button.textContent = t('creatingLead');
+      post('/api/kommo/leads', {
+        phone: verified.phone || fullPhone(),
+        account: account,
+        userId: userId,
+        sessionToken: sessionToken,
+        checkId: verified.checkId
+      })
+        .then(function (created) {
+          verified = null;
+          var box = el('unyx-result');
+          box.className = 'status success';
+          el('unyx-result-title').textContent = t('createdTitle');
+          el('unyx-result-copy').textContent = t('createdText');
+          var extra = ['<div><b>' + esc(t('labelLead')) + ':</b> ' + esc(created.leadName || t('createdFallbackName')) + '</div>'];
+          if (created.leadUrl) {
+            extra.push('<div><a class="link" href="' + esc(created.leadUrl) + '" target="_blank" rel="noopener">' + esc(t('openLead')) + ' ↗</a></div>');
+          }
+          el('unyx-result-extra').innerHTML = extra.join('');
+          el('unyx-create').hidden = true;
+          el('unyx-retry').hidden = false;
+          show('result');
+        })
+        .catch(function (error) {
+          var message = (error && error.message) || t('createErrorText');
+          post('/api/kommo/client-check', {
+            phone: fullPhone(),
+            account: account,
+            userId: userId,
+            sessionToken: sessionToken
+          })
+            .then(function (result) {
+              verified = result;
+              renderResult(result);
+              var box = el('unyx-result');
+              box.className = 'status error';
+              el('unyx-result-title').textContent = t('createErrorTitle');
+              el('unyx-result-copy').textContent = message;
+            })
+            .catch(function () {
+              renderFailure(t('createErrorTitle'), message, true);
+            });
+        })
+        .then(function () {
+          button.disabled = false;
+          button.textContent = t('createLead');
+        });
+    }
+
+    this.getContext = function () {
+      var system = {};
+      try {
+        system = self.system() || {};
+      } catch (error) {
+        system = {};
+      }
+      var kommoContext = window.kommo_context || {};
+      var kommoUser = kommoContext.user || {};
+      var subdomain = system.subdomain || kommoContext.subdomain || '';
+      var id = parseInt(system.user_id || kommoUser.id || 0, 10);
+      return { account: subdomain, userId: isNaN(id) ? 0 : id };
+    };
+
+    this.callbacks = {
+      render: function () {
+        var widget = self;
+        ui = self.i18n('ui') || {};
+        var settings = self.get_settings() || {};
+        var configured = typeof settings.api_url === 'string' ? settings.api_url.trim() : '';
+        apiUrl = (configured || DEFAULT_API_URL).replace(/\/+$/, '');
+        var context = widget.getContext();
+        account = context.account;
+        userId = context.userId;
+
+        if (typeof APP !== 'undefined' && APP.data && APP.data.current_card && APP.data.current_card.id === 0) {
+          return true;
+        }
+
+        var base = (self.params && (self.params.cdn_path || self.params.path)) || '';
+        if (base && !document.querySelector('link[data-unyx-style]')) {
+          var link = document.createElement('link');
+          link.rel = 'stylesheet';
+          link.href = base.replace(/\/+$/, '') + '/style.css';
+          link.setAttribute('data-unyx-style', '1');
+          document.head.appendChild(link);
+        }
+
+        self.render_template({
+          caption: { class_name: CAPTION_CLASS },
+          body: markup(),
+          render: ''
+        });
+        return true;
+      },
+
+      init: function () {
+        var root = card();
+        if (root && boundEl !== root) {
+          boundEl = root;
+          root.addEventListener('input', function (event) {
+            var input = event.target;
+            if (input.id !== 'unyx-phone') return;
+            var digits = input.value.replace(/\D/g, '').slice(0, 9);
+            if (digits !== input.value) input.value = digits;
+            if (input.getAttribute('aria-invalid') === 'true' && /^9\d{8}$/.test(digits)) {
+              input.removeAttribute('aria-invalid');
+              el('unyx-phone-error').hidden = true;
+            }
+          });
+          root.addEventListener('keydown', function (event) {
+            if (event.key === 'Enter' && event.target.id === 'unyx-phone') {
+              event.preventDefault();
+              verify();
+            }
+          });
+          root.addEventListener('click', function (event) {
+            var trigger = event.target.closest ? event.target.closest('[data-action]') : null;
+            if (!trigger) return;
+            var action = trigger.getAttribute('data-action');
+            if (action === 'verify') verify();
+            if (action === 'create') create();
+            if (action === 'reset') resetForm();
+            if (action === 'authorize') {
+              ensureSession().then(function (session) {
+                if (session && session.authUrl) window.open(session.authUrl, '_blank', 'noopener');
+              }).catch(function () {
+                renderFailure(t('authTitle'), t('genericError'), true);
+              });
+            }
+          });
+        }
+        show('initial');
+        return true;
+      },
+
+      bind_actions: function () {
+        return true;
+      },
+
+      destroy: function () {
+        boundEl = null;
+        sessionToken = '';
+        verified = null;
+        return true;
+      },
+
+      onSave: function () {
+        return true;
+      },
+
+      settings: function () {
+        return true;
+      }
+    };
+
+    return this;
+  };
+
+  return CustomWidget;
+});

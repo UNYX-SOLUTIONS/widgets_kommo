@@ -1,0 +1,16 @@
+{
+  "name": "unyx-kommo-widget-api",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Backend UNYX para el widget privado de Kommo «Verificar Cliente».",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node test/smoke.js",
+    "check": "node --check src/server.js && node --check src/kommo.js && node --check src/service.js && node --check src/store.js && node --check src/security.js && node --check src/phone.js && node --check src/http.js && node --check src/config.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "UNINLICENSED"
+}

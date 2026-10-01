@@ -1,15 +1,31 @@
 {
   "widget": {
-    "name": "UNYX · Verificar Cliente",
-    "description": "Verifica si un cliente ya posee una atención activa antes de crear un nuevo lead.",
-    "short_description": "Verificación de atención por teléfono",
-    "version": "1.0.0",
+    "name": "widget.name",
+    "description": "widget.description",
+    "short_description": "widget.short_description",
+    "version": "1.0.1",
     "interface_version": 2,
     "init_once": false,
-    "locale": ["es"],
+    "locale": [
+      "es"
+    ],
     "installation": true,
-    "support": { "link": "https://unyxsolutions.com" },
-    "locations": ["everywhere"],
-    "logo": "images/logo.png"
+    "support": {
+      "link": "https://unyxsolutions.com"
+    }
+  },
+  "locations": [
+    "settings",
+    "ccard-1",
+    "lcard-1",
+    "clist-0",
+    "llist-0"
+  ],
+  "settings": {
+    "api_url": {
+      "name": "settings.api_url",
+      "type": "text",
+      "required": false
+    }
   }
 }

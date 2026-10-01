@@ -22,11 +22,35 @@ fi
 
 NETWORK="${TRAEFIK_NETWORK:-unyx-widgets-front}"
 DOMAIN="${WIDGETS_DOMAIN:-widgets.unyxsolutions.com}"
+API_DOMAIN="${WIDGETS_API_DOMAIN:-api.widgets.unyxsolutions.com}"
+
+API_ENV_FILE="$PROJECT_DIR/backend/.env"
 
 echo ""
 echo "======================================"
 echo " UNYX Widgets Kommo - Deploy"
 echo "======================================"
+echo ""
+
+# ==========================================
+# 0. SECRETOS DEL BACKEND
+# ==========================================
+
+echo "[0/6] Verificando secretos del backend..."
+
+if [ -f "$API_ENV_FILE" ]; then
+  echo "backend/.env encontrado."
+else
+  echo "AVISO: no existe backend/.env."
+  echo "       Copie backend/.env.example y complete KOMMO_CLIENT_ID,"
+  echo "       KOMMO_CLIENT_SECRET, KOMMO_SUBDOMAIN y SESSION_SECRET."
+  echo "       El contenedor widget-api no arrancará sin ellos (NODE_ENV=production)."
+  if [ "${ALLOW_MISSING_API_ENV:-0}" != "1" ]; then
+    exit 1
+  fi
+  echo "       Continuando porque ALLOW_MISSING_API_ENV=1."
+fi
+
 echo ""
 
 # ==========================================
@@ -79,12 +103,13 @@ echo "Docker Compose válido."
 # ==========================================
 
 echo ""
-echo "[4/6] Reconstruyendo unyx-widgets..."
+echo "[4/6] Reconstruyendo unyx-widgets y unyx-widgets-api..."
 
-docker compose $ENV_ARGS up -d --build
+docker compose $ENV_ARGS up -d --build widgets
+docker compose $ENV_ARGS up -d --build widget-api
 
 echo ""
-echo "Contenedor actualizado."
+echo "Contenedores actualizados."
 
 # ==========================================
 # 5. LIMPIEZA
@@ -119,6 +144,10 @@ for dir in */; do
     ls "$dir"/*.html > /dev/null 2>&1 || continue
     echo "  https://${DOMAIN}/${dir%/}/"
 done
+
+echo ""
+echo "API del widget UNYX: https://${API_DOMAIN}/health"
+curl -fsS "https://${API_DOMAIN}/health" || echo "  (sin respuesta; revise `docker compose logs widget-api`)"
 
 echo ""
 echo "======================================"

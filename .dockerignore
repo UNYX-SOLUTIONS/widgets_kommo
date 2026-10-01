@@ -13,3 +13,6 @@ docker-compose.yml
 # Documentación y scripts (no van dentro de la imagen)
 *.md
 infrastructure
+
+# El backend tiene su propia imagen y nunca debe servirse como estático
+backend
