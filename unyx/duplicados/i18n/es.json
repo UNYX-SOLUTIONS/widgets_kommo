@@ -1,0 +1,7 @@
+{
+  "widget": {
+    "name": "UNYX · Verificar Cliente",
+    "short_description": "Verificación de atención por teléfono",
+    "description": "Verifica si un cliente ya posee una atención activa antes de crear un nuevo lead."
+  }
+}
