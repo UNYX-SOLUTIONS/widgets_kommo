@@ -16,7 +16,7 @@ return [{
     phone: data.phone,
     contactName: data.contactName,
     contactCount: data.contactCount,
-    closedLeadCount: unyxClosedCount(leads),
+    closedLeadCount: unyxClosedCount(leads, data),
     activeLead: resolved.activeLead,
     leads: resolved.state === 'multiple_leads' ? active : [],
   },

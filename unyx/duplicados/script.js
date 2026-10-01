@@ -21,6 +21,7 @@ define(['jquery'], function () {
 
     var ui = {};
     var n8nUrl = '';
+    var sharedToken = '';
     var account = '';
     var userId = 0;
     var userName = '';
@@ -85,8 +86,8 @@ define(['jquery'], function () {
 
     function post(path, payload) {
       return new Promise(function (resolve, reject) {
-        if (!n8nUrl) {
-          reject(new Error(t('configErrorTitle')));
+        if (!n8nUrl || !sharedToken) {
+          reject(new Error(t('configMissingUrl')));
           return;
         }
         var body = {};
@@ -215,7 +216,7 @@ define(['jquery'], function () {
       input.removeAttribute('aria-invalid');
       error.hidden = true;
 
-      if (!n8nUrl) {
+      if (!n8nUrl || !sharedToken) {
         renderFailure(t('configErrorTitle'), t('configMissingUrl'));
         return;
       }
@@ -231,7 +232,8 @@ define(['jquery'], function () {
         phone: '+593' + phone,
         account: account,
         userId: userId,
-        userName: userName
+        userName: userName,
+        token: sharedToken
       })
         .then(function (result) {
           verified = result;
@@ -255,7 +257,8 @@ define(['jquery'], function () {
         phone: verified.phone,
         account: account,
         userId: userId,
-        userName: userName
+        userName: userName,
+        token: sharedToken
       })
         .then(function (created) {
           verified = null;
@@ -318,6 +321,7 @@ define(['jquery'], function () {
         var settings = self.get_settings() || {};
         var configured = typeof settings.n8n_base === 'string' ? settings.n8n_base.trim() : '';
         n8nUrl = configured.replace(/\/+$/, '');
+        sharedToken = typeof settings.unyx_token === 'string' ? settings.unyx_token.trim() : '';
 
         var context = self.getContext();
         account = context.account;

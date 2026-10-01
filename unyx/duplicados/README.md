@@ -54,18 +54,24 @@ Widget (dentro de Kommo)        n8n (flow.unyxsolutions.com)        Kommo API v4
 
 ## Configuración del widget
 
-Un único ajuste, obligatorio al instalar:
+Dos ajustes, ambos obligatorios al instalar:
 
 | Ajuste | Valor |
 |---|---|
 | *URL de los webhooks de n8n* | `https://flow.unyxsolutions.com/webhook/unyx-<cliente>` |
+| *Token de acceso del widget* | el mismo valor que la variable de entorno `UNYX_SECRET_<CLIENTE>` en n8n |
 
-Ejemplos: `…/webhook/unyx-meditec`, `…/webhook/unyx-luxviajes`. El widget añade
-`/verificar-cliente` y `/crear-lead`.
+Ejemplos de URL: `…/webhook/unyx-meditec`, `…/webhook/unyx-luxviajes`. El widget
+añade `/verificar-cliente` y `/crear-lead`.
 
-Si se deja vacío, el widget muestra «configuración incompleta» y no llama a
-ningún sitio: no hay URL por defecto, justamente para que una cuenta no termine
-pegándole al webhook de otra.
+Si falta cualquiera de los dos, el widget muestra «configuración incompleta» y no
+llama a ningún sitio: no hay URL por defecto (para que una cuenta no termine
+pegándole al webhook de otra) ni token por defecto (para que un workflow sin
+configurar no quede accesible desde internet).
+
+El token es la barrera de acceso al webhook: n8n lo compara contra su variable de
+entorno y **deniega todo si esa variable no existe**. Detalle en
+`unyx/n8n/README.md`.
 
 ## Ubicaciones del manifiesto
 

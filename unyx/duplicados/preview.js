@@ -109,7 +109,7 @@
   var host = {
     i18n: function (key) { return langs[key] || {}; },
     system: function () { return { area: 'ccard', subdomain: 'meditecec', user_id: 555, user_name: 'Asesor UNYX' }; },
-    get_settings: function () { return { n8n_base: API }; },
+    get_settings: function () { return { n8n_base: API, unyx_token: 'preview' }; },
     set_settings: function () {},
     render_template: function (data) {
       document.getElementById('preview-root').innerHTML = '<div class="unyx-widget">' + data.body + '</div>';

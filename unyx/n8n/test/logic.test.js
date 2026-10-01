@@ -39,8 +39,9 @@ function run(snippet, ctx) {
   };
   const input = ctx.input || [];
   const $input = { all: () => input, first: () => input[0] };
-  const fn = new Function('$input', '$', '$json', snippet);
-  return fn($input, $, ctx.json);
+  const $env = ctx.env || {};
+  const fn = new Function('$input', '$', '$json', '$env', snippet);
+  return fn($input, $, ctx.json, $env);
 }
 
 const config = JSON.parse(fs.readFileSync(path.join(N8N_DIR, 'clientes.json'), 'utf8'));
@@ -81,7 +82,31 @@ for (const workflow of [verificar, crear]) {
     http.length > 0 && http.every((n) => n.credentials[tipo] && n.credentials[tipo].id === cliente.credencial.id && n.parameters.genericAuthType === tipo),
     http.length + ' nodos HTTP · ' + tipo
   );
-  check(workflow.name + ': no consulta pipelines ni etapas', !workflow.nodes.some((n) => String(n.parameters.url || '').includes('/pipelines')));
+  check(workflow.name + ': no consulta pipelines ni etapas', !workflow.nodes.some((n) => String((n.parameters || {}).url || '').includes('/pipelines')));
+  const urls = workflow.nodes
+    .filter((n) => n.type === 'n8n-nodes-base.httpRequest')
+    .map((n) => String(n.parameters.url || ''));
+  check(
+    workflow.name + ': usa la ruta documentada de campos de contacto',
+    urls.every((url) => !url.includes('/api/v4/contacts/fields')) &&
+      urls.every((url) => !url.includes('custom_fields') || url.includes('/api/v4/contacts/custom_fields')),
+    urls.filter((url) => url.includes('custom_fields')).join(', ') || '(sin nodo de campos)'
+  );
+  const usuarios = workflow.nodes.find((n) => n.name === 'Usuarios Kommo');
+  check(
+    workflow.name + ': la lista de usuarios degrada en vez de abortar',
+    usuarios && usuarios.onError === 'continueRegularOutput' && usuarios.alwaysOutputData === true && !('onError' in usuarios.parameters),
+    usuarios ? usuarios.onError + '/' + usuarios.alwaysOutputData : 'sin nodo'
+  );
+  check(
+    workflow.name + ': la búsqueda de contactos pagina al máximo documentado',
+    workflow.nodes.some((n) => n.name === 'Buscar Contactos' && n.parameters.queryParameters.parameters.some((p) => p.name === 'limit' && p.value === '250'))
+  );
+  check(
+    workflow.name + ': el webhook no queda abierto a cualquier origen',
+    workflow.nodes.every((n) => n.type !== 'n8n-nodes-base.webhook' || !n.parameters.options || n.parameters.options.allowedOrigins === undefined)
+  )
+;
   check(workflow.name + ': cada cuenta tiene su ruta', workflow.nodes.some((n) => n.parameters.path === 'unyx-' + cliente.slug + '/verificar-cliente' || n.parameters.path === 'unyx-' + cliente.slug + '/crear-lead'));
   check(workflow.name + ': el subdominio quedó resuelto', !JSON.stringify(workflow).includes('__SUBDOMINIO__'));
 }
@@ -110,6 +135,28 @@ check(
     }
   })()
 );
+
+// ---------- Acceso Autorizado (token compartido) ----------
+
+const accesoNode = verificar.nodes.find((n) => n.name === 'Acceso Autorizado');
+const accesoExpression = accesoNode.parameters.conditions.conditions[0].leftValue
+  .replace(/^=/, '')
+  .replace(/^\{\{/, '')
+  .replace(/\}\}$/, '')
+  .trim();
+
+function acceso(token, env) {
+  const fn = new Function('$json', '$env', 'return (' + accesoExpression + ');');
+  return fn({ body: { token } }, env);
+}
+
+check('acceso: acepta el token correcto', acceso('secreto-de-prueba', { [cliente.secretoEnv]: 'secreto-de-prueba' }) === true);
+check('acceso: rechaza un token distinto', acceso('otro-token', { [cliente.secretoEnv]: 'secreto-de-prueba' }) === false);
+check('acceso: rechaza si no se envía token', acceso(undefined, { [cliente.secretoEnv]: 'secreto-de-prueba' }) === false);
+check('acceso: falla cerrado si la variable de entorno no existe', acceso('', {}) === false && acceso('cualquiera', {}) === false);
+check('acceso: no hay secreto incrustado en el workflow', !JSON.stringify(verificar).includes('secreto-de-prueba') && JSON.stringify(verificar).includes('$env.' + cliente.secretoEnv));
+const denegadoSnippet = snippetOf(crear, 'Acceso Denegado');
+check('acceso: responde ok:false al denegar', run(denegadoSnippet, { json: {} })[0].json.ok === false);
 
 // ---------- Cuenta Correcta (guarda multi-cliente) ----------
 
@@ -246,11 +293,20 @@ const conExclusion = run(evaluar, {
   json: {},
   nodes: {
     'Consolidar': [{ json: Object.assign({}, consolidado, { pipelinesExcluidos: [999] }) }],
-    'Obtener Leads': [{ json: { _embedded: { leads: [{ id: 30, name: 'Postventa', responsible_user_id: 777, pipeline_id: 999, created_at: 100, closed_at: null }] } } }],
+    'Obtener Leads': [{
+      json: {
+        _embedded: {
+          leads: [
+            { id: 30, name: 'Postventa', responsible_user_id: 777, pipeline_id: 999, created_at: 300, closed_at: 1700000000 },
+            { id: 33, name: 'Ganado de ventas', responsible_user_id: 777, pipeline_id: 1, created_at: 200, closed_at: 1700000000 },
+          ],
+        },
+      },
+    }],
   },
 })[0].json;
-check('evaluar: un lead en pipeline excluido no bloquea', conExclusion.state === 'available', JSON.stringify(conExclusion.state));
-check('evaluar: el pipeline excluido tampoco cuenta como historial', conExclusion.closedLeadCount === 0, conExclusion.closedLeadCount);
+check('evaluar: un lead de pipeline excluido no bloquea', conExclusion.state === 'available', JSON.stringify(conExclusion.state));
+check('evaluar: el cerrado excluido NO cuenta como historial', conExclusion.closedLeadCount === 1, conExclusion.closedLeadCount);
 
 // ---------- Workflow crear ----------
 

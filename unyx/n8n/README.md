@@ -20,6 +20,58 @@ workflows con su propia credencial.** El widget es el mismo ZIP para todos.
 No se toca ni se reimporta ningún workflow existente
 (`kommo-widget-conversion`, `kommo-widget-ticket-promedio`, `kommo-cobranzas-*`).
 
+## Acceso: token compartido obligatorio
+
+Los webhooks están en internet y **no** tienen autenticación propia de n8n: el
+widget llama con `self.crm_post`, que no permite enviar cabeceras, así que no se
+puede usar *Header Auth* en el webhook. En su lugar, el **primer nodo** de cada
+workflow exige un token compartido en el cuerpo:
+
+```
+Boolean($env.UNYX_SECRET_<CLIENTE>) && String($json.body.token) === String($env.UNYX_SECRET_<CLIENTE>)
+```
+
+Reglas de este diseño:
+
+- El valor vive **solo** en una **variable de entorno de n8n**. En el repositorio
+  está únicamente el *nombre* de la variable (`secretoEnv` en `clientes.json`);
+  el JSON generado no contiene el valor.
+- **Falla cerrado**: si la variable no está definida, la comparación es falsa y
+  **todo se deniega**. Un despliegue a medio configurar no queda abierto.
+- El mismo token va en los ajustes del widget (`unyx_token`), que **es
+  obligatorio**, igual que `n8n_base`.
+
+### Configurar la variable en n8n
+
+n8n la lee del entorno del proceso, así que hay que añadirla al contenedor y
+reiniciarlo:
+
+```yaml
+# docker-compose.yml de n8n
+services:
+  n8n:
+    environment:
+      - UNYX_SECRET_MEDITEC=<token largo y aleatorio>
+      - UNYX_SECRET_LUXVIAJES=<otro token distinto>
+```
+
+Después, reiniciar n8n. Comprobar que n8n permite leer variables de entorno
+desde expresiones: si está definido `N8N_BLOCK_ENV_ACCESS_IN_NODE=true`, `$env`
+no estará disponible y el workflow denegará todo. En ese caso, hay que quitarlo
+o mover el token a una credencial y hacer la comprobación con un nodo HTTP.
+
+Generar el token con `openssl rand -hex 32`.
+
+> El token viaja en el cuerpo de cada petición y n8n guarda los datos de la
+> ejecución, así que el token queda en el historial de ejecuciones. No es un
+> secreto de larga vida: si se filtra, se cambia en la variable y en los ajustes
+> del widget.
+
+> Alcance real: esto es una **barrera de acceso compartida**, no autenticación
+> por usuario. Un asesor con las herramientas de desarrollo abiertas puede ver
+> el token y usarlo. Lo que impide es que cualquiera en internet, sin el token,
+> enumere contactos por teléfono o cree leads en la cuenta.
+
 ## Regla de «atención activa»: solo `closed_at`
 
 **Un lead del contacto está activo si no tiene `closed_at`.** Kommo marca
@@ -84,16 +136,30 @@ ella. La guarda es lo que hace segura la reutilización.
      "slug": "altosa",
      "nombre": "Altosa",
      "subdominio": "altosa",
+     "secretoEnv": "UNYX_SECRET_ALTOSA",
      "credencial": { "id": "<id en n8n>", "name": "Kommo Altosa Token", "tipo": "httpHeaderAuth" },
      "pipelinesExcluidos": []
    }
    ```
 
+   - `secretoEnv` es el **nombre** de la variable de entorno de n8n con el token
+     compartido del widget; el valor no se guarda en el repositorio.
    - `credencial.tipo` es `httpHeaderAuth` (cabecera `Authorization: Bearer <token>`) o
      `httpBearerAuth` (el token solo, como valor de la credencial). **Debe
      coincidir con el tipo real en n8n**, o el nodo HTTP queda sin credencial.
    - `pipelinesExcluidos` son los pipelines que **no** cuentan como atención
      activa. Por defecto `[]`.
+
+4. Definir en el entorno de n8n la variable `secretoEnv` de ese cliente y
+   reiniciar n8n.
+5. `node unyx/n8n/build.js` (o `node unyx/n8n/build.js altosa` para uno solo).
+6. Importar los dos JSON nuevos en n8n y activarlos.
+7. Al instalar el widget en esa cuenta, poner en los ajustes la *URL de los
+   webhooks de n8n* (`https://flow.unyxsolutions.com/webhook/unyx-<slug>`) y el
+   *token de acceso* con el mismo valor de la variable de entorno.
+
+No se inventan subdominios ni credenciales: si a un cliente le falta el id de
+credencial, el generador lo salta con un aviso.
 
 ## Qué archivos se importan en n8n
 
@@ -123,13 +189,30 @@ Revisar este punto con el cliente: el aviso por nota y el bloqueo del widget
 pueden tener criterios distintos a propósito (por ejemplo, el widget podría ser
 más estricto). Cambiarlo es editar la lista en `clientes.json` y regenerar.
 
-4. `node unyx/n8n/build.js` (o `node unyx/n8n/build.js altosa` para uno solo).
-5. Importar los dos JSON nuevos en n8n y activarlos.
-6. Al instalar el widget en esa cuenta, poner en *URL de los webhooks de n8n*:
-   `https://flow.unyxsolutions.com/webhook/unyx-<slug>`
+## Límites y coste por consulta
 
-No se inventan subdominios ni credenciales: si a un cliente le falta el id de
-credencial, el generador lo salta con un aviso.
+| Consulta | Llamadas | Límite |
+|---|---|---|
+| Verificación | 3 × `contacts` + 1 × `users` + 1 × `leads` | `contacts` 250, `leads` 250, `users` 250 |
+| Creación | las de verificación (revalidación) + `custom_fields` + `contacts` + `leads` | ídem |
+
+Detalles que conviene conocer antes de tocar esto:
+
+- **3 consultas de contactos**: se hacen una por cada forma habitual del número
+  (`991234567`, `0991234567`, `+593991234567`) y después se compara exacto en
+  JS. Es deliberado: si la búsqueda de Kommo no fuera por subcadena, una sola
+  consulta perdería contactos guardados con otro formato, y un falso «disponible»
+  es exactamente el duplicado que el widget debe evitar. Si se confirma en la
+  cuenta que la búsqueda es por subcadena, se puede bajar a una sola consulta
+  editando `code/preparar-consultas.js` y regenerando.
+- **Sin paginación**: ninguna lista pagina (`page`/`_page_count` se ignoran). Con
+  más de 250 coincidencias, o más de 250 leads enlazados a un contacto, la
+  consulta se trunca en silencio. Para teléfonos de 9 dígitos es improbable, pero
+  conviene revisarlo si una cuenta crece.
+- **Nombres de asesores**: `GET /users` requiere permisos de administrador. El
+  nodo está marcado con `onError: continueRegularOutput`, así que si falla la
+  ejecución **no** se detiene y el widget muestra solo los ids (`userMap` queda
+  vacío). Antes de este arreglo, ese fallo abortaba toda la consulta.
 
 ## Formato de las respuestas
 
@@ -158,24 +241,45 @@ exacto en lugar del error genérico de red.
 
 ## Instalación de los workflows
 
-1. n8n → **Workflows → Import from File** → `unyx-meditec-verificar-cliente.json`.
-2. Repetir con `unyx-meditec-crear-lead.json`.
-3. Abrir cada uno y confirmar que los nodos HTTP muestran la credencial
+1. Definir la variable de entorno del token en n8n y reiniciar (ver arriba). Si
+   se salta este paso, el widget recibirá «Acceso no autorizado».
+2. n8n → **Workflows → Import from File** → `unyx-meditec-verificar-cliente.json`.
+3. Repetir con `unyx-meditec-crear-lead.json`.
+4. Abrir cada uno y confirmar que los nodos HTTP muestran la credencial
    **Kommo Meditec Token** (si el id no existiera en la instancia, seleccionarla
-   a mano en cada nodo HTTP).
-4. **Activar** los dos workflows: el webhook de producción solo existe cuando el
+   a mano en cada nodo HTTP). Un nodo sin credencial no falla al importar: falla
+   en la primera consulta del asesor.
+5. **Activar** los dos workflows: el webhook de producción solo existe cuando el
    workflow está activo. El widget usa `/webhook/…`, no `/webhook-test/…`.
-5. Probar:
+6. Probar:
 
    ```bash
    curl -s -X POST https://flow.unyxsolutions.com/webhook/unyx-meditec/verificar-cliente \
      -H 'content-type: application/json' \
-     -d '{"phone":"991234567","account":"meditecec","userId":555}'
+     -d '{"phone":"991234567","account":"meditecec","userId":555,"token":"<el token>"}'
    ```
 
-   Debe responder `{"ok":true,"state":…}`. Si responde
+   Debe responder `{"ok":true,"state":…}`. Sin `token` (o con uno incorrecto)
+   debe responder `{"ok":false,"message":"Acceso no autorizado…"}`. Si responde
    `{"code":404,"message":"webhook not registered"}`, el workflow no está activo
    o la ruta no coincide.
+
+## Actualizar un workflow ya desplegado
+
+Los JSON se generan con `"active": false`, así que reimportar **no** actualiza el
+que está en producción: crea uno nuevo y puede dejar dos workflows compitiendo
+por la misma ruta, o el viejo activo sirviendo código anterior. Para cada par:
+
+1. En n8n, **desactivar** el workflow viejo (deja de responder el webhook).
+2. Reimportar el JSON regenerado.
+3. Revisar cada nodo HTTP: **credencial seleccionada** y, si aplica,
+   concurrencia = 1 en el workflow de creación.
+4. **Activar** el nuevo.
+5. `curl` de humo a los dos webhooks (con `token`) y borrar el workflow viejo.
+
+Los ajustes que se hagan a mano en n8n (credencial, concurrencia, activación)
+no viven en el repositorio y se pierden en cada reimportación: hay que repetirlos
+y conviene anotarlos aquí.
 
 ## Concurrencia
 

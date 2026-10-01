@@ -5,7 +5,8 @@
     "description": "Verifica si un cliente ya posee una atención activa antes de crear un nuevo lead."
   },
   "settings": {
-    "n8n_base": "URL de los webhooks de n8n para esta cuenta (ej. https://flow.unyxsolutions.com/webhook/unyx-meditec)"
+    "n8n_base": "URL de los webhooks de n8n para esta cuenta (ej. https://flow.unyxsolutions.com/webhook/unyx-meditec)",
+    "unyx_token": "Token de acceso del widget (lo entrega UNYX)"
   },
   "ui": {
     "formLabel": "Número de teléfono",
@@ -40,7 +41,7 @@
     "createErrorTitle": "No se pudo crear el lead",
     "createErrorText": "Verifique nuevamente el estado del cliente.",
     "configErrorTitle": "Configuración incompleta",
-    "configMissingUrl": "Falta la URL de los webhooks de n8n en los ajustes del widget.",
+    "configMissingUrl": "Faltan la URL de n8n o el token de acceso en los ajustes del widget.",
     "advisorMissing": "No se pudo identificar al asesor actual. Abra el widget desde la ficha del cliente o contacte al administrador.",
     "genericError": "Ocurrió un error inesperado. Inténtelo nuevamente.",
     "createLead": "Crear lead",
