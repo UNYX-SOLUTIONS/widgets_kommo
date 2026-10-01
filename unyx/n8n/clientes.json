@@ -1,0 +1,31 @@
+{
+  "clientes": [
+    {
+      "slug": "meditec",
+      "nombre": "Meditec",
+      "subdominio": "meditecec",
+      "credencial": {
+        "id": "rsBfubSe7f022RsT",
+        "name": "Kommo Meditec Token"
+      }
+    }
+  ],
+  "_ayuda": [
+    "Un cliente = una integración privada en SU cuenta = un par de workflows con SU credencial.",
+    "Cada entrada genera: unyx-<slug>-verificar-cliente.json y unyx-<slug>-crear-lead.json",
+    "Pasos para agregar un cliente:",
+    "  1. Crear la integración privada en su Kommo (Settings -> Integrations -> Crear integración).",
+    "  2. Copiar su token de larga duración a una credencial nueva en n8n,",
+    "     tipo Header Auth, con nombre de cabecera 'Authorization' y valor 'Bearer <token>'.",
+    "  3. Anotar aquí el slug, el subdominio y el id/nombre de esa credencial.",
+    "  4. node unyx/n8n/build.js  y luego importar los dos JSON en n8n.",
+    "El slug forma parte de la URL del webhook y debe ser único: unyx-<slug>.",
+    "No se inventan subdominios ni credenciales: si falta el id, el cliente se salta con un aviso."
+  ],
+  "ejemplo": {
+    "slug": "altosa",
+    "nombre": "Altosa",
+    "subdominio": "altosa",
+    "credencial": { "id": "<id de la credencial en n8n>", "name": "Kommo Altosa Token" }
+  }
+}

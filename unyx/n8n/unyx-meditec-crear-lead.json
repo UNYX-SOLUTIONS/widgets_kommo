@@ -1,0 +1,832 @@
+{
+  "name": "UNYX - Meditec - Crear Lead",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "unyx-meditec/crear-lead",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "*"
+        }
+      },
+      "id": "whc-0000-0000-0000-000000000001",
+      "name": "Webhook Widget",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        300
+      ],
+      "webhookId": "b1a7c3d5-0002-4a6b-8c9d-0e1f2a3b4c02"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "ifc-0000-0000-0000-000000000000-cond",
+              "leftValue": "={{ String($json.body && $json.body.account || \"\").trim().toLowerCase() === \"meditecec\" }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "ifc-0000-0000-0000-000000000000",
+      "name": "Cuenta Correcta",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        220,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// =============================================================\n// UNYX · Verificar Cliente — Nodo \"Cuenta No Autorizada\"\n// El widget se instala en varias cuentas de Kommo y cada una tiene su propio\n// workflow. Si el widget de otra cuenta apunta aquí, se corta antes de tocar\n// la API: de otro modo el asesor vería datos (y podría crear leads) en la\n// cuenta equivocada usando este token.\n// =============================================================\nreturn [{\n  json: {\n    ok: false,\n    message: 'Este widget no está configurado para esta cuenta de Kommo. Revise la URL de n8n en los ajustes del widget.',\n  },\n}];"
+      },
+      "id": "cdc-0000-0000-0000-000000000009",
+      "name": "Cuenta No Autorizada",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        520
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "ifc-0000-0000-0000-000000000001-cond",
+              "leftValue": "={{ /^(?:\\+?593)?0?9\\d{8}$/.test(String($json.body && $json.body.phone || \"\").replace(/[\\s\\-()]/g, \"\")) }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "ifc-0000-0000-0000-000000000001",
+      "name": "Teléfono Válido",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        440,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// =============================================================\n// UNYX · Verificar Cliente — Nodo \"Preparar Consultas\"\n// Normaliza el celular ecuatoriano y genera una consulta por variante.\n// El webhook recibe el body como formulario (self.crm_post de Kommo) o JSON.\n// =============================================================\nconst body = $json.body || $json;\n\nconst digits = String(body.phone || '').replace(/\\D/g, '');\nlet local = digits;\nif (local.startsWith('593')) local = local.slice(3);\nif (local.startsWith('0')) local = local.slice(1);\n\nif (!/^9\\d{8}$/.test(local)) {\n  throw new Error('Teléfono inválido: se esperaban 9 dígitos de celular ecuatoriano.');\n}\n\nconst phone = '+593' + local;\nconst userId = parseInt(body.userId || 0, 10) || 0;\nconst userName = String(body.userName || '').trim();\n\n// Kommo busca por texto libre sobre los campos personalizados: se consultan\n// las tres formas habituales de guardar el número y luego se compara exacto.\nconst variants = [local, '0' + local, phone];\n\nreturn variants.map((variant) => ({\n  json: { variant, phone, local, userId, userName },\n}));"
+      },
+      "id": "cdc-0000-0000-0000-000000000001",
+      "name": "Preparar Consultas",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        },
+        "method": "GET",
+        "url": "https://meditecec.kommo.com/api/v4/contacts",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "query",
+              "value": "={{ $json.variant }}"
+            },
+            {
+              "name": "with",
+              "value": "leads"
+            },
+            {
+              "name": "limit",
+              "value": "25"
+            }
+          ]
+        }
+      },
+      "id": "htc-0000-0000-0000-000000000001",
+      "name": "Buscar Contactos",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        880,
+        180
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "rsBfubSe7f022RsT",
+          "name": "Kommo Meditec Token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// =============================================================\n// UNYX · Verificar Cliente — Nodo \"Unificar Contactos\"\n// Recibe la respuesta de cada variante, deduplica por id y descarta los\n// contactos cuyo teléfono no coincide exactamente con el buscado.\n// Recoge también los ids de los leads enlazados (with=leads).\n// =============================================================\nconst first = $('Preparar Consultas').first().json;\nconst target = first.local;\n\nfunction digitsOf(value) {\n  return String(value === null || value === undefined ? '' : value).replace(/\\D/g, '');\n}\n\nfunction phonesMatch(value) {\n  let candidate = digitsOf(value);\n  if (!candidate || candidate.length < 7 || candidate.length > 15) return false;\n  if (candidate.startsWith('593')) candidate = candidate.slice(3);\n  if (candidate.startsWith('0')) candidate = candidate.slice(1);\n  return candidate === target;\n}\n\nconst contactsById = new Map();\n\nfor (const item of $input.all()) {\n  const contacts = item.json?._embedded?.contacts ?? [];\n  for (const contact of contacts) {\n    if (!contact || contact.is_deleted) continue;\n    const phones = [];\n    for (const field of contact.custom_fields_values ?? []) {\n      for (const entry of field.values ?? []) {\n        if (entry && entry.value !== undefined && entry.value !== null) phones.push(entry.value);\n      }\n    }\n    if (phones.some(phonesMatch)) contactsById.set(contact.id, contact);\n  }\n}\n\nconst contacts = [...contactsById.values()];\nconst leadIds = [];\n\nfor (const contact of contacts) {\n  for (const lead of contact._embedded?.leads ?? []) {\n    if (lead && lead.id && !leadIds.includes(lead.id)) leadIds.push(lead.id);\n  }\n}\n\nreturn [{\n  json: {\n    phone: first.phone,\n    userId: first.userId,\n    userName: first.userName,\n    contactCount: contacts.length,\n    contactName: contacts[0]?.name ?? '',\n    contactIds: contacts.map((contact) => contact.id),\n    contacts: contacts.map((contact) => ({ id: contact.id, name: contact.name ?? '' })),\n    leadIds,\n  },\n}];"
+      },
+      "id": "cdc-0000-0000-0000-000000000002",
+      "name": "Unificar Contactos",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        },
+        "method": "GET",
+        "url": "https://meditecec.kommo.com/api/v4/users",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "limit",
+              "value": "250"
+            }
+          ]
+        }
+      },
+      "id": "htc-0000-0000-0000-000000000004",
+      "name": "Usuarios Kommo",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1320,
+        180
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "rsBfubSe7f022RsT",
+          "name": "Kommo Meditec Token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// =============================================================\n// UNYX · Verificar Cliente — Nodo \"Consolidar\"\n// Junta los datos del contacto con los nombres de los usuarios, para poder\n// evaluar cada lead. No consulta pipelines ni etapas: la regla de atención\n// activa se basa en closed_at (ver _comun.js).\n// =============================================================\nconst base = $('Unificar Contactos').first().json;\n\nconst userMap = {};\ntry {\n  const users = $('Usuarios Kommo').first().json?._embedded?.users ?? [];\n  for (const user of users) userMap[user.id] = user.name;\n} catch (error) {\n  // Sin permisos de administrador la lista de usuarios puede fallar:\n  // se degrada a mostrar solo los ids.\n}\n\nreturn [{\n  json: {\n    ...base,\n    subdomain: 'meditecec',\n    userMap,\n  },\n}];"
+      },
+      "id": "cdc-0000-0000-0000-000000000003",
+      "name": "Consolidar",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1540,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "ifc-0000-0000-0000-000000000002-cond",
+              "leftValue": "={{ $json.leadIds.length > 0 }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "ifc-0000-0000-0000-000000000002",
+      "name": "¿Tiene Leads?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1760,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        },
+        "method": "GET",
+        "url": "=https://meditecec.kommo.com/api/v4/leads?limit=250&{{ $json.leadIds.map((id) => \"filter[id][]=\" + id).join(\"&\") }}"
+      },
+      "id": "htc-0000-0000-0000-000000000005",
+      "name": "Obtener Leads",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1980,
+        80
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "rsBfubSe7f022RsT",
+          "name": "Kommo Meditec Token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// =============================================================\n// UNYX · Verificar Cliente — Reglas compartidas\n// Este archivo NO se ejecuta solo: build.js lo antepone a los nodos que\n// evalúan leads, para que la regla de \"atención activa\" viva en un solo lugar.\n//\n// REGLA: un lead está ACTIVO si no tiene closed_at.\n// Kommo marca closed_at cuando el lead se cierra (ganado o perdido) y lo\n// limpia si se reabre. Por eso no hace falta consultar pipelines ni etapas:\n// la regla funciona igual en cualquier cuenta y en cualquier pipeline.\n// =============================================================\n\nfunction unyxIsActive(lead) {\n  if (!lead || lead.is_deleted) return false;\n  return !lead.closed_at;\n}\n\nfunction unyxDecorate(lead, data) {\n  return {\n    id: lead.id,\n    name: lead.name || '#' + lead.id,\n    created_at: lead.created_at || 0,\n    responsible_user_id: lead.responsible_user_id || 0,\n    responsibleName: data.userMap[lead.responsible_user_id] || '',\n    leadUrl: 'https://' + data.subdomain + '.kommo.com/leads/' + lead.id,\n  };\n}\n\n// Devuelve solo las atenciones activas, de la más reciente a la más antigua.\nfunction unyxActiveLeads(leads, data) {\n  return (leads || [])\n    .filter((lead) => unyxIsActive(lead))\n    .map((lead) => unyxDecorate(lead, data))\n    .sort((a, b) => b.created_at - a.created_at);\n}\n\nfunction unyxClosedCount(leads) {\n  return (leads || []).filter((lead) => lead && !lead.is_deleted && lead.closed_at).length;\n}\n\n// Regla de decisión compartida por los dos workflows.\nfunction unyxResolveState(active, userId) {\n  if (active.length > 1) return { state: 'multiple_leads', activeLead: null };\n  if (active.length === 1) {\n    return {\n      state: active[0].responsible_user_id === userId ? 'same_agent' : 'other_agent',\n      activeLead: active[0],\n    };\n  }\n  return { state: 'available', activeLead: null };\n}\n\n// =============================================================\n// UNYX · Crear Lead — Nodo \"Evaluar Atención\" (workflow: crear)\n// RE-VALIDACIÓN: justo antes de crear el lead se vuelve a calcular el estado\n// con datos frescos. Devuelve además el contacto a reutilizar y el nombre\n// del lead, para que el nodo de creación no tenga que recalcular nada.\n// =============================================================\nconst data = $('Consolidar').first().json;\n\nlet leads = [];\ntry {\n  leads = $('Obtener Leads').first().json?._embedded?.leads ?? [];\n} catch (error) {\n  leads = [];\n}\n\nconst active = unyxActiveLeads(leads, data);\nconst resolved = unyxResolveState(active, data.userId);\nconst contact = data.contacts?.[0] ?? null;\n\nreturn [{\n  json: {\n    ok: true,\n    state: resolved.state,\n    phone: data.phone,\n    userId: data.userId,\n    userName: data.userName,\n    contactId: contact ? contact.id : null,\n    contactName: data.contactName,\n    contactCount: data.contactCount,\n    activeLead: resolved.activeLead,\n    leads: resolved.state === 'multiple_leads' ? active : [],\n    leadName: data.contactName ? data.contactName + ' · ' + data.phone : data.phone,\n  },\n}];"
+      },
+      "id": "cdc-0000-0000-0000-000000000004",
+      "name": "Evaluar Atención",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2200,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "ifc-0000-0000-0000-000000000003-cond",
+              "leftValue": "={{ $json.state === \"available\" }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "ifc-0000-0000-0000-000000000003",
+      "name": "¿Disponible?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2420,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "ifc-0000-0000-0000-000000000004-cond",
+              "leftValue": "={{ $json.contactId !== null && $json.contactId !== undefined }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "ifc-0000-0000-0000-000000000004",
+      "name": "¿Existe Contacto?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2640,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        },
+        "method": "GET",
+        "url": "https://meditecec.kommo.com/api/v4/contacts/fields"
+      },
+      "id": "htc-0000-0000-0000-000000000006",
+      "name": "Campos Contacto",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2860,
+        300
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "rsBfubSe7f022RsT",
+          "name": "Kommo Meditec Token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        },
+        "method": "POST",
+        "url": "https://meditecec.kommo.com/api/v4/contacts",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify([{ name: ($('Evaluar Atención').first().json.contactName || $('Evaluar Atención').first().json.phone), responsible_user_id: $('Evaluar Atención').first().json.userId, created_by: $('Evaluar Atención').first().json.userId, custom_fields_values: [{ field_id: (($json._embedded.custom_fields.find((f) => f.field_code === \"PHONE\") || {}).id || null), values: [{ value: $('Evaluar Atención').first().json.phone, enum_code: \"WORK\" }] }] }]) }}"
+      },
+      "id": "htc-0000-0000-0000-000000000007",
+      "name": "Crear Contacto",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3080,
+        300
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "rsBfubSe7f022RsT",
+          "name": "Kommo Meditec Token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// =============================================================\n// UNYX · Crear Lead — Nodo \"Extraer Contacto\"\n// Toma el id del contacto recién creado y lo mezcla con los datos del lead\n// que vienen de la evaluación, para que el nodo de creación reciba lo mismo\n// por las dos ramas (contacto existente / contacto nuevo).\n// =============================================================\nconst base = $('Evaluar Atención').first().json;\nconst created = $json?._embedded?.contacts?.[0];\n\nreturn [{\n  json: {\n    ...base,\n    contactId: created?.id ?? null,\n    contactCreated: true,\n  },\n}];"
+      },
+      "id": "cdc-0000-0000-0000-000000000005",
+      "name": "Extraer Contacto",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3300,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        },
+        "method": "POST",
+        "url": "https://meditecec.kommo.com/api/v4/leads",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify([{ name: $json.leadName, responsible_user_id: $json.userId, created_by: $json.userId, updated_by: $json.userId, _embedded: { contacts: [{ id: $json.contactId, is_main: true }] } }]) }}"
+      },
+      "id": "htc-0000-0000-0000-000000000008",
+      "name": "Crear Lead",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3520,
+        80
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "rsBfubSe7f022RsT",
+          "name": "Kommo Meditec Token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// =============================================================\n// UNYX · Crear Lead — Nodo \"Resultado\"\n// Arma la respuesta final del widget con el lead creado.\n// =============================================================\nconst created = $json?._embedded?.leads?.[0];\nconst base = $('Evaluar Atención').first().json;\n\nreturn [{\n  json: {\n    ok: true,\n    leadId: created?.id ?? null,\n    leadName: base.leadName,\n    contactId: base.contactId,\n    leadUrl: 'https://meditecec.kommo.com/leads/' + (created?.id ?? ''),\n  },\n}];"
+      },
+      "id": "cdc-0000-0000-0000-000000000006",
+      "name": "Resultado",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3740,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// =============================================================\n// UNYX · Crear Lead — Nodo \"Bloqueado\"\n// Llegó una atención activa entre la verificación del asesor y la creación.\n// Se responde ok:false con el estado real para que el widget lo muestre.\n// =============================================================\nconst data = $json;\n\nconst messages = {\n  same_agent: 'Este cliente ya tiene una atención activa asignada a usted.',\n  other_agent: 'Este cliente está siendo atendido por otro asesor.',\n  multiple_leads: 'Este cliente tiene varias atenciones activas. Revise el historial antes de crear otra.',\n};\n\nreturn [{\n  json: {\n    ok: false,\n    state: data.state,\n    message: messages[data.state] || 'Hay una atención activa para este cliente. No se creó el lead.',\n    activeLead: data.activeLead ?? null,\n    leads: data.leads ?? [],\n    contactName: data.contactName ?? '',\n  },\n}];"
+      },
+      "id": "cdc-0000-0000-0000-000000000007",
+      "name": "Bloqueado",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2640,
+        460
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// =============================================================\n// UNYX · Verificar Cliente — Nodo \"Teléfono Inválido\"\n// Se responde 200 con ok:false para que el widget muestre el mensaje\n// exacto en lugar del error genérico de red.\n// =============================================================\nreturn [{\n  json: {\n    ok: false,\n    message: 'Ingrese 9 dígitos y seleccione un celular válido.',\n  },\n}];"
+      },
+      "id": "cdc-0000-0000-0000-000000000008",
+      "name": "Teléfono Inválido",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        460
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              }
+            ]
+          }
+        }
+      },
+      "id": "rsc-0000-0000-0000-000000000001",
+      "name": "Responder al Widget",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        3960,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## UNYX · Crear Lead — Meditec\nCuenta: `meditecec.kommo.com` · Webhook: `unyx-meditec/crear-lead`\n\nRe-valida justo antes de crear para evitar duplicados por concurrencia.\n\n- Mismas reglas que «Verificar Cliente» (snippet compartido `_comun.js`).\n- Reutiliza el contacto existente; si no existe, lo crea con el campo PHONE.\n- El lead se asigna al asesor del contexto (`userId` = `self.system().user_id`).\n- Sin pipeline_id ni status_id: Kommo usa la primera etapa del pipeline principal.\n- El primer nodo rechaza el request si viene de otra cuenta de Kommo.\n\n**Concurrencia:** la revalidación reduce la ventana de carrera. Si tu versión de n8n\npermite limitar la concurrencia del workflow a 1, actívalo para cerrarla del todo.\nGenerado por `unyx/n8n/build.js`: no editar este JSON a mano.",
+        "height": 360
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        0,
+        40
+      ],
+      "typeVersion": 1,
+      "id": "note-0-40",
+      "name": "Nota 0,40"
+    }
+  ],
+  "connections": {
+    "Webhook Widget": {
+      "main": [
+        [
+          {
+            "node": "Cuenta Correcta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cuenta Correcta": {
+      "main": [
+        [
+          {
+            "node": "Teléfono Válido",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Cuenta No Autorizada",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Teléfono Válido": {
+      "main": [
+        [
+          {
+            "node": "Preparar Consultas",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Teléfono Inválido",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar Consultas": {
+      "main": [
+        [
+          {
+            "node": "Buscar Contactos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buscar Contactos": {
+      "main": [
+        [
+          {
+            "node": "Unificar Contactos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Unificar Contactos": {
+      "main": [
+        [
+          {
+            "node": "Usuarios Kommo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Usuarios Kommo": {
+      "main": [
+        [
+          {
+            "node": "Consolidar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Consolidar": {
+      "main": [
+        [
+          {
+            "node": "¿Tiene Leads?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Tiene Leads?": {
+      "main": [
+        [
+          {
+            "node": "Obtener Leads",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Evaluar Atención",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Obtener Leads": {
+      "main": [
+        [
+          {
+            "node": "Evaluar Atención",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Evaluar Atención": {
+      "main": [
+        [
+          {
+            "node": "¿Disponible?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Disponible?": {
+      "main": [
+        [
+          {
+            "node": "¿Existe Contacto?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Bloqueado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Existe Contacto?": {
+      "main": [
+        [
+          {
+            "node": "Crear Lead",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Campos Contacto",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Campos Contacto": {
+      "main": [
+        [
+          {
+            "node": "Crear Contacto",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Crear Contacto": {
+      "main": [
+        [
+          {
+            "node": "Extraer Contacto",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extraer Contacto": {
+      "main": [
+        [
+          {
+            "node": "Crear Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Crear Lead": {
+      "main": [
+        [
+          {
+            "node": "Resultado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resultado": {
+      "main": [
+        [
+          {
+            "node": "Responder al Widget",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Bloqueado": {
+      "main": [
+        [
+          {
+            "node": "Responder al Widget",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Teléfono Inválido": {
+      "main": [
+        [
+          {
+            "node": "Responder al Widget",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cuenta No Autorizada": {
+      "main": [
+        [
+          {
+            "node": "Responder al Widget",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "id": "UnyxCrearmeditec",
+  "tags": []
+}

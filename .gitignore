@@ -11,3 +11,6 @@ desktop.ini
 # Editor
 .vscode/
 .idea/
+
+# Artefactos de build (el ZIP del widget se sube a Kommo, no se versiona)
+dist/

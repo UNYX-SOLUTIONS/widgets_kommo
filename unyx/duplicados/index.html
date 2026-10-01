@@ -3,25 +3,11 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>UNYX · Verificar Cliente</title>
+  <title>UNYX · Verificar Cliente — vista previa</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <main id="unyx-widget" class="unyx-widget">
-    <section class="unyx-card stack" aria-live="polite">
-      <div class="view stack" data-view="initial">
-        <div class="heading"><label class="label" for="phone">Número de teléfono</label><p class="hint">Ingrese el número celular del cliente para verificar su atención.</p></div>
-        <div class="phone"><span class="prefix">+593</span><input id="phone" type="tel" inputmode="numeric" autocomplete="tel-national" placeholder="99 123 4567" maxlength="9" aria-label="Número celular ecuatoriano"></div>
-        <button id="verify" class="button" type="button">Verificar cliente →</button>
-      </div>
-      <div class="view" data-view="loading" hidden><div class="status"><h2>Verificando cliente…</h2><p>Consultando las atenciones asociadas.</p></div></div>
-      <div class="view stack" data-view="result" hidden>
-        <div id="result" class="status"><h2 id="result-title"></h2><p id="result-copy"></p><div id="result-extra" class="details"></div></div>
-        <div class="actions"><button id="create" class="button" type="button" hidden>Crear lead</button><button id="open-lead" class="button" type="button" hidden>Abrir lead</button><button id="retry" class="button" type="button" hidden>Reintentar</button><button class="button secondary" type="button" data-reset>Nueva consulta</button></div>
-      </div>
-    </section>
-  </main>
-  <script>window.UNYX_WIDGET_API = window.UNYX_WIDGET_API || '';</script>
-  <script src="script.js"></script>
+  <main id="preview-root"></main>
+  <script src="preview.js"></script>
 </body>
 </html>
