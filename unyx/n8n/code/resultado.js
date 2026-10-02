@@ -4,6 +4,7 @@
 // =============================================================
 const created = $json?._embedded?.leads?.[0];
 const base = $('Evaluar Atención').first().json;
+const subdominio = $('Resolver Cliente').first().json.subdominio;
 
 return [{
   json: {
@@ -11,6 +12,6 @@ return [{
     leadId: created?.id ?? null,
     leadName: base.leadName,
     contactId: base.contactId,
-    leadUrl: 'https://__SUBDOMINIO__.kommo.com/leads/' + (created?.id ?? ''),
+    leadUrl: 'https://' + subdominio + '.kommo.com/leads/' + (created?.id ?? ''),
   },
 }];

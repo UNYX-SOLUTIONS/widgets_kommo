@@ -7,9 +7,10 @@ activa antes de permitir crear un lead.
 Se muestra como panel lateral en la ficha de contacto (`ccard-1`) y en
 cualquier lead (`lcard-1`).
 
-**Un mismo ZIP sirve para todas las cuentas** (Meditec, Altosa, LuxViajes…).
+**Un mismo ZIP sirve para todas las cuentas** (Altosa, Meditec, LuxViajes…).
 Cada cuenta crea su propia integración privada, sube este ZIP y configura en
-los ajustes del widget la URL de sus webhooks.
+los ajustes la URL de los webhooks y su token. Del lado de n8n hay **un solo par
+de workflows generales**: el cliente se decide por el token.
 
 ## Estado real del proyecto
 
@@ -17,40 +18,42 @@ los ajustes del widget la URL de sus webhooks.
 |---|---|
 | Interfaz del card y los 8 estados | **Hecho** (`script.js`, `style.css`, `i18n/es.json`) |
 | Llamadas del widget a n8n | **Hecho** (vía `self.crm_post`, sin CORS) |
-| Workflows de n8n | **Hechos**, listos para importar (`unyx/n8n/`) |
-| Reglas de negocio probadas sin n8n | **Hecho** (68 comprobaciones) |
+| Workflows de n8n | **Hechos**: un par general para todos los clientes |
+| Reglas de negocio probadas sin n8n | **Hecho** (88 comprobaciones) |
 | Prueba contra Kommo real | **Pendiente** — requiere importar los workflows y subir el ZIP |
-| Logos oficiales de UNYX | **Pendiente** — los PNG actuales son marcadores |
+| Logos oficiales | **Hecho** a partir de `images/unyx.png`; falta un isotipo cuadrado para `logo_min`/`logo_small` |
 
 Nada de esto está verificado todavía contra una cuenta real de Kommo.
 
 ## Arquitectura
 
 ```text
-Widget (dentro de Kommo)        n8n (flow.unyxsolutions.com)        Kommo API v4
+Widget (dentro de Kommo)        n8n (un par general)            Kommo API v4
   script.js
      │  self.crm_post(form)
-     └──────────────────────►  /webhook/unyx-<cliente>/verificar-cliente
-                                  │ guarda de cuenta
+     └──────────────────────►  /webhook/unyx/verificar-cliente
+                                  │ Resolver Cliente (switch por token)
+                                  │ ¿Autorizado?
                                   │ contacts?query=…&with=leads
                                   │ leads?filter[id][]=…
                                   │ users
                                   ▼
-                               estado: available | same_agent | other_agent | multiple_leads
+                               available | same_agent | other_agent | multiple_leads
      │  self.crm_post(form)
-     └──────────────────────►  /webhook/unyx-<cliente>/crear-lead
+     └──────────────────────►  /webhook/unyx/crear-lead
                                   │ REVALIDA
                                   │ contacts (reutiliza o crea)
                                   │ leads (asigna al asesor)
 ```
 
-- El token de Kommo vive **solo** en la credencial de n8n de cada cliente. El
+- El token de Kommo de cada cliente vive **solo en el entorno de n8n**. El
   widget no contiene credenciales ni llama a la API de Kommo.
 - Se usa `self.crm_post` (proxy de Kommo) en vez de `fetch`: no hay CORS.
 - El asesor actual se toma de `self.system().user_id`; n8n lo usa como
   `responsible_user_id` y `created_by` del lead nuevo.
-- El workflow rechaza cualquier petición cuya cuenta no sea la suya, para que
-  el widget de un cliente no pueda leer ni escribir en otro.
+- El primer nodo de cada workflow identifica al cliente por el token del widget
+  y comprueba que la cuenta coincida: el token de un cliente no puede operar en
+  la cuenta de otro.
 
 ## Configuración del widget
 
@@ -58,20 +61,20 @@ Dos ajustes, ambos obligatorios al instalar:
 
 | Ajuste | Valor |
 |---|---|
-| *URL de los webhooks de n8n* | `https://flow.unyxsolutions.com/webhook/unyx-<cliente>` |
-| *Token de acceso del widget* | el mismo valor que la variable de entorno `UNYX_SECRET_<CLIENTE>` en n8n |
+| *URL de los webhooks de n8n* | `https://flow.unyxsolutions.com/webhook/unyx` — **igual para todos los clientes** |
+| *Token de acceso de esta cuenta* | el token que definiste en n8n como `UNYX_SECRET_<CLIENTE>` |
 
-Ejemplos de URL: `…/webhook/unyx-meditec`, `…/webhook/unyx-luxviajes`. El widget
-añade `/verificar-cliente` y `/crear-lead`.
+El widget añade `/verificar-cliente` y `/crear-lead` a esa URL.
 
 Si falta cualquiera de los dos, el widget muestra «configuración incompleta» y no
 llama a ningún sitio: no hay URL por defecto (para que una cuenta no termine
-pegándole al webhook de otra) ni token por defecto (para que un workflow sin
+pegándole al webhook equivocado) ni token por defecto (para que un workflow sin
 configurar no quede accesible desde internet).
 
-El token es la barrera de acceso al webhook: n8n lo compara contra su variable de
-entorno y **deniega todo si esa variable no existe**. Detalle en
-`unyx/n8n/README.md`.
+**Cómo se genera el token del widget:** lo generas tú, uno por cliente, con
+`[Convert]::ToHexString([System.Security.Cryptography.RandomNumberGenerator]::GetBytes(32)).ToLower()`
+en PowerShell. El detalle completo, incluido de dónde sale el token de Kommo,
+está en `unyx/n8n/README.md` → sección **«Los dos tokens»**.
 
 ## Ubicaciones del manifiesto
 
@@ -163,14 +166,16 @@ En Kommo, como **administrador**:
 
 1. Buscar el widget en la lista de integraciones de la cuenta e instalarlo.
 2. En los ajustes del widget, *URL de los webhooks de n8n*:
-   `https://flow.unyxsolutions.com/webhook/unyx-<cliente>`.
+   `https://flow.unyxsolutions.com/webhook/unyx` (igual para todos) y el
+   *Token de acceso* de esa cuenta.
 3. Abrir la ficha de un contacto: el card debe aparecer en el panel derecho.
 
 ### 5. Repetir por cliente
 
 Cada cuenta de Kommo necesita su propia integración privada y su propia subida
-del ZIP (las integraciones privadas no se comparten entre cuentas). El ZIP es
-el mismo; solo cambia la URL de los webhooks.
+del ZIP (las integraciones privadas no se comparten entre cuentas). El ZIP y la
+URL de los webhooks son los mismos para todos; lo único que cambia por cuenta es
+el *Token de acceso*.
 
 ## Vista previa local
 
@@ -187,16 +192,24 @@ cualquier otro disponible.
 Para probar contra n8n real, en la consola del navegador:
 
 ```js
-window.UNYX_PREVIEW_API = 'https://flow.unyxsolutions.com/webhook/unyx-meditec'
+window.UNYX_PREVIEW_API = 'https://flow.unyxsolutions.com/webhook/unyx'
 ```
 
 y recargar.
 
 ## Logos
 
-`images/*.png` son marcadores generados con
-`infrastructure/scripts/generate-placeholder-logos.ps1`. Sustituir por los
-oficiales de UNYX respetando:
+Los cinco PNG se generan desde el logo oficial de UNYX
+(`images/unyx.png`) con `infrastructure/scripts/build-widget-logos.ps1`, que
+ajusta el logotipo dentro de cada lienzo conservando la proporción:
+
+```powershell
+pwsh -File infrastructure/scripts/build-widget-logos.ps1
+# o desde otro archivo:
+pwsh -File infrastructure/scripts/build-widget-logos.ps1 -Source ruta\al\logo.svg
+```
+
+Medidas exigidas por Kommo:
 
 | Archivo | Medida |
 |---|---|
@@ -213,7 +226,7 @@ tarjeta: si falta, Kommo da error al inicializar.
 
 | Archivo | ¿Va en el ZIP? | Para qué |
 |---|---|---|
-| `manifest.json` | sí | metadatos, ubicaciones y campo `n8n_base` |
+| `manifest.json` | sí | metadatos, ubicaciones y campos `n8n_base` y `unyx_token` |
 | `script.js` | sí | widget AMD (`render`, `init`, `bind_actions`) |
 | `style.css` | sí | card compacto, máximo 380 px, altura según contenido |
 | `i18n/es.json` | sí | textos de interfaz e instalación |

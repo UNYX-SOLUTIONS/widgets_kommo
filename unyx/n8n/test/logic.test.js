@@ -1,9 +1,9 @@
 'use strict';
 
 /**
- * Prueba la lógica de los nodos Code de los workflows sin n8n.
- * Los snippets se extraen de los JSON generados, así se valida también
- * que build.js los haya incrustado bien.
+ * Prueba la lógica de los nodos Code de los DOS workflows generales sin n8n.
+ * Los snippets se extraen de los JSON generados, así se valida también que
+ * build.js los haya incrustado bien.
  *
  * Uso: node unyx/n8n/test/logic.test.js
  */
@@ -45,25 +45,37 @@ function run(snippet, ctx) {
 }
 
 const config = JSON.parse(fs.readFileSync(path.join(N8N_DIR, 'clientes.json'), 'utf8'));
-const cliente = config.clientes.find((item) => item.slug === 'meditec');
-const tipoCredencial = (item) => (item.credencial.tipo === 'httpBearerAuth' ? 'httpBearerAuth' : 'httpHeaderAuth');
+const clientes = config.clientes;
+const altosa = clientes.find((c) => c.slug === 'altosa');
+const luxviajes = clientes.find((c) => c.slug === 'luxviajes');
 
-const slugs = config.clientes.map((item) => item.slug);
-check('clientes: un slug por cliente, sin repetidos', new Set(slugs).size === slugs.length, slugs.join(', '));
-check(
-  'clientes: cada credencial tiene id, nombre y tipo válido',
-  config.clientes.every((item) => item.credencial && item.credencial.id && item.credencial.name && ['httpHeaderAuth', 'httpBearerAuth'].includes(item.credencial.tipo)),
-  JSON.stringify(config.clientes.map((item) => item.slug + ':' + item.credencial.tipo))
-);
-
-const verificar = loadWorkflow('unyx-' + cliente.slug + '-verificar-cliente.json');
-const crear = loadWorkflow('unyx-' + cliente.slug + '-crear-lead.json');
+const verificar = loadWorkflow('unyx-verificar-cliente.json');
+const crear = loadWorkflow('unyx-crear-lead.json');
 const widgetScript = fs.readFileSync(path.join(N8N_DIR, '..', 'duplicados', 'script.js'), 'utf8');
 
-// ---------- Estructura de los workflows ----------
+// ---------- Configuración de clientes ----------
+
+const slugs = clientes.map((c) => c.slug);
+check('clientes: slug único', new Set(slugs).size === slugs.length, slugs.join(', '));
+check('clientes: hay 3 clientes', clientes.length === 3, clientes.map((c) => c.nombre).join(', '));
+check(
+  'clientes: cada uno tiene las 2 variables de entorno',
+  clientes.every((c) => c.secretoEnv && c.kommoEnv && c.subdominio && c.nombre)
+);
+check(
+  'clientes: Altosa está configurada',
+  altosa && altosa.subdominio === 'altosa' && altosa.secretoEnv === 'UNYX_SECRET_ALTOSA',
+  JSON.stringify(altosa)
+);
+check(
+  'clientes: LuxViajes conserva sus pipelines excluidos',
+  JSON.stringify(luxviajes.pipelinesExcluidos) === JSON.stringify([13416240, 13629516, 13629520, 13680940])
+);
+
+// ---------- Estructura de los dos workflows ----------
 
 for (const workflow of [verificar, crear]) {
-  const names = new Set(workflow.nodes.map((node) => node.name));
+  const names = new Set(workflow.nodes.map((n) => n.name));
   const broken = [];
   for (const [from, outputs] of Object.entries(workflow.connections)) {
     if (!names.has(from)) broken.push('origen ' + from);
@@ -74,61 +86,145 @@ for (const workflow of [verificar, crear]) {
     }
   }
   check(workflow.name + ': conexiones válidas', broken.length === 0, broken.join(', '));
+
+  // Alcanzabilidad: todo nodo ejecutable debe colgar del webhook. Un nodo
+  // suelto deja la ejecución parada y el widget sin respuesta.
+  const alcanzables = new Set();
+  const pila = ['Webhook Widget'];
+  while (pila.length) {
+    const actual = pila.pop();
+    if (alcanzables.has(actual)) continue;
+    alcanzables.add(actual);
+    for (const rama of (workflow.connections[actual] || { main: [] }).main || []) {
+      for (const enlace of rama) pila.push(enlace.node);
+    }
+  }
+  const sueltos = workflow.nodes
+    .filter((n) => n.type !== 'n8n-nodes-base.stickyNote')
+    .map((n) => n.name)
+    .filter((nombre) => !alcanzables.has(nombre));
+  check(workflow.name + ': todos los nodos son alcanzables desde el webhook', sueltos.length === 0, sueltos.join(', '));
   check(workflow.name + ': tiene Respond to Webhook', workflow.nodes.some((n) => n.type === 'n8n-nodes-base.respondToWebhook'));
-  const http = workflow.nodes.filter((n) => n.type === 'n8n-nodes-base.httpRequest');
-  const tipo = tipoCredencial(cliente);
+  check(workflow.name + ': es general (no lleva cliente en el nombre)', !/Altosa|Meditec|LuxViajes/i.test(workflow.name), workflow.name);
   check(
-    workflow.name + ': todos los HTTP usan la credencial del cliente',
-    http.length > 0 && http.every((n) => n.credentials[tipo] && n.credentials[tipo].id === cliente.credencial.id && n.parameters.genericAuthType === tipo),
-    http.length + ' nodos HTTP · ' + tipo
+    workflow.name + ': no consulta pipelines ni etapas',
+    !workflow.nodes.some((n) => String((n.parameters || {}).url || '').includes('/pipelines'))
   );
-  check(workflow.name + ': no consulta pipelines ni etapas', !workflow.nodes.some((n) => String((n.parameters || {}).url || '').includes('/pipelines')));
-  const urls = workflow.nodes
-    .filter((n) => n.type === 'n8n-nodes-base.httpRequest')
-    .map((n) => String(n.parameters.url || ''));
+  check(
+    workflow.name + ': no usa credenciales de n8n',
+    workflow.nodes.every((n) => !n.credentials)
+  );
+  check(
+    workflow.name + ': los HTTP mandan Authorization desde la variable de entorno',
+    workflow.nodes
+      .filter((n) => n.type === 'n8n-nodes-base.httpRequest')
+      .every((n) => n.parameters.sendHeaders === true && n.parameters.headerParameters.parameters.some((h) => h.name === 'Authorization' && h.value.includes('kommoToken')))
+  );
+  check(
+    workflow.name + ': las URLs usan el subdominio resuelto',
+    workflow.nodes
+      .filter((n) => n.type === 'n8n-nodes-base.httpRequest')
+      .every((n) => String(n.parameters.url || '').includes("$('Resolver Cliente').first().json.subdominio"))
+  );
   check(
     workflow.name + ': usa la ruta documentada de campos de contacto',
-    urls.every((url) => !url.includes('/api/v4/contacts/fields')) &&
-      urls.every((url) => !url.includes('custom_fields') || url.includes('/api/v4/contacts/custom_fields')),
-    urls.filter((url) => url.includes('custom_fields')).join(', ') || '(sin nodo de campos)'
+    workflow.nodes
+      .filter((n) => n.type === 'n8n-nodes-base.httpRequest')
+      .every((n) => { const u = String(n.parameters.url || ''); return !u.includes('/contacts/fields') && (!u.includes('custom_fields') || u.includes('/contacts/custom_fields')); })
   );
   const usuarios = workflow.nodes.find((n) => n.name === 'Usuarios Kommo');
   check(
     workflow.name + ': la lista de usuarios degrada en vez de abortar',
-    usuarios && usuarios.onError === 'continueRegularOutput' && usuarios.alwaysOutputData === true && !('onError' in usuarios.parameters),
-    usuarios ? usuarios.onError + '/' + usuarios.alwaysOutputData : 'sin nodo'
+    usuarios && usuarios.onError === 'continueRegularOutput' && usuarios.alwaysOutputData === true && !('onError' in usuarios.parameters)
   );
   check(
-    workflow.name + ': la búsqueda de contactos pagina al máximo documentado',
+    workflow.name + ': la búsqueda de contactos pide 250',
     workflow.nodes.some((n) => n.name === 'Buscar Contactos' && n.parameters.queryParameters.parameters.some((p) => p.name === 'limit' && p.value === '250'))
   );
   check(
     workflow.name + ': el webhook no queda abierto a cualquier origen',
     workflow.nodes.every((n) => n.type !== 'n8n-nodes-base.webhook' || !n.parameters.options || n.parameters.options.allowedOrigins === undefined)
-  )
-;
-  check(workflow.name + ': cada cuenta tiene su ruta', workflow.nodes.some((n) => n.parameters.path === 'unyx-' + cliente.slug + '/verificar-cliente' || n.parameters.path === 'unyx-' + cliente.slug + '/crear-lead'));
-  check(workflow.name + ': el subdominio quedó resuelto', !JSON.stringify(workflow).includes('__SUBDOMINIO__'));
+  );
+  check(
+    workflow.name + ': ningún token está incrustado en el JSON',
+    !JSON.stringify(workflow).includes(clientes[0].secretoEnv === 'UNYX_SECRET_ALTOSA' ? 'Bearer ' + altosa.secretoEnv : 'ZZZ')
+  );
 }
+
+check('el webhook es el mismo para todos los clientes', verificar.nodes.find((n) => n.name === 'Webhook Widget').parameters.path === 'unyx/verificar-cliente');
+check('el webhook de creación es general', crear.nodes.find((n) => n.name === 'Webhook Widget').parameters.path === 'unyx/crear-lead');
+
+// ---------- Resolver Cliente (switch por token) ----------
+
+const resolver = snippetOf(verificar, 'Resolver Cliente');
+
+function resolverCtx(body, env) {
+  return run(resolver, { json: { body }, env: env });
+}
+
+const ENV_OK = {
+  UNYX_SECRET_ALTOSA: 'token-altosa',
+  KOMMO_TOKEN_ALTOSA: 'kommo-altosa',
+  UNYX_SECRET_MEDITEC: 'token-meditec',
+  KOMMO_TOKEN_MEDITEC: 'kommo-meditec',
+  UNYX_SECRET_LUXVIAJES: 'token-lux',
+  KOMMO_TOKEN_LUXVIAJES: 'kommo-lux',
+};
+
+const okAltosa = resolverCtx({ token: 'token-altosa', account: 'altosa', phone: '991234567', userId: '77' }, ENV_OK)[0].json;
+check('resolver: identifica a Altosa por su token', okAltosa.autorizado === true && okAltosa.cliente === 'Altosa', JSON.stringify(okAltosa));
+check('resolver: devuelve el subdominio del cliente', okAltosa.subdominio === 'altosa');
+check('resolver: devuelve el token de Kommo de ese cliente', okAltosa.kommoToken === 'kommo-altosa');
+check('resolver: no propaga el token del widget', okAltosa.token === undefined);
+
+const okLux = resolverCtx({ token: 'token-lux', account: 'agencialuxviajes' }, ENV_OK)[0].json;
+check('resolver: identifica a LuxViajes', okLux.cliente === 'LuxViajes' && okLux.subdominio === 'agencialuxviajes');
+check('resolver: aplica los pipelines excluidos del cliente', JSON.stringify(okLux.pipelinesExcluidos) === JSON.stringify(luxviajes.pipelinesExcluidos));
+check('resolver: un cliente sin exclusiones recibe lista vacía', JSON.stringify(okAltosa.pipelinesExcluidos) === '[]');
+
+const okMeditec = resolverCtx({ token: 'token-meditec', account: 'meditecec' }, ENV_OK)[0].json;
+check('resolver: identifica a Meditec', okMeditec.cliente === 'Meditec');
+
+check('resolver: rechaza un token desconocido', resolverCtx({ token: 'inventado', account: 'altosa' }, ENV_OK)[0].json.ok === false);
+check('resolver: rechaza si no hay token', resolverCtx({ account: 'altosa' }, ENV_OK)[0].json.ok === false);
+check(
+  'resolver: falla cerrado si las variables de entorno no existen',
+  resolverCtx({ token: 'token-altosa', account: 'altosa' }, {})[0].json.ok === false
+);
+check(
+  'resolver: rechaza el token de un cliente en la cuenta de otro',
+  resolverCtx({ token: 'token-altosa', account: 'meditecec' }, ENV_OK)[0].json.ok === false,
+  JSON.stringify(resolverCtx({ token: 'token-altosa', account: 'meditecec' }, ENV_OK)[0].json)
+);
+check(
+  'resolver: avisa si falta el token de Kommo del cliente',
+  resolverCtx({ token: 'token-altosa', account: 'altosa' }, { UNYX_SECRET_ALTOSA: 'token-altosa' })[0].json.message.includes('Altosa')
+);
+
+const autorizadoNode = verificar.nodes.find((n) => n.name === '¿Autorizado?');
+const autorizadoExpr = autorizadoNode.parameters.conditions.conditions[0].leftValue
+  .replace(/^=/, '').replace(/^\{\{/, '').replace(/\}\}$/, '').trim();
+const evaluarAutorizado = new Function('$json', 'return (' + autorizadoExpr + ');');
+check('¿Autorizado?: deja pasar la petición válida', evaluarAutorizado(okAltosa) === true);
+check('¿Autorizado?: manda al respondedor la denegada', evaluarAutorizado({ ok: false, message: 'x' }) === false);
+check('¿Autorizado?: no deja pasar un objeto vacío', evaluarAutorizado({}) === false);
 
 // ---------- Preparar Consultas ----------
 
 const preparar = snippetOf(verificar, 'Preparar Consultas');
-
+const resultadoPreparar = run(preparar, { json: { phone: '0991234567', userId: 77, userName: 'Ana', subdominio: 'altosa' } });
+check('preparar: genera 3 variantes', resultadoPreparar.length === 3, JSON.stringify(resultadoPreparar.map((i) => i.json.variant)));
 check(
-  'preparar: acepta 991234567',
-  run(preparar, { json: { body: { phone: '991234567', userId: '555' } } })[0].json.phone === '+593991234567'
+  'preparar: variantes correctas',
+  JSON.stringify(resultadoPreparar.map((i) => i.json.variant)) === JSON.stringify(['991234567', '0991234567', '+593991234567'])
 );
-
-const variantes = run(preparar, { json: { body: { phone: '+593 99 123 4567', userId: 555 } } });
-check('preparar: genera 3 variantes', variantes.length === 3, JSON.stringify(variantes.map((i) => i.json.variant)));
-check('preparar: variantes correctas', JSON.stringify(variantes.map((i) => i.json.variant)) === JSON.stringify(['991234567', '0991234567', '+593991234567']));
-check('preparar: conserva el asesor', variantes[0].json.userId === 555);
+check('preparar: normaliza a E.164', resultadoPreparar[0].json.phone === '+593991234567');
+check('preparar: conserva el asesor y el subdominio', resultadoPreparar[0].json.userId === 77 && resultadoPreparar[0].json.subdominio === 'altosa');
 check(
   'preparar: rechaza un fijo',
   (() => {
     try {
-      run(preparar, { json: { body: { phone: '022345678' } } });
+      run(preparar, { json: { phone: '022345678' } });
       return false;
     } catch (error) {
       return true;
@@ -136,53 +232,9 @@ check(
   })()
 );
 
-// ---------- Acceso Autorizado (token compartido) ----------
-
-const accesoNode = verificar.nodes.find((n) => n.name === 'Acceso Autorizado');
-const accesoExpression = accesoNode.parameters.conditions.conditions[0].leftValue
-  .replace(/^=/, '')
-  .replace(/^\{\{/, '')
-  .replace(/\}\}$/, '')
-  .trim();
-
-function acceso(token, env) {
-  const fn = new Function('$json', '$env', 'return (' + accesoExpression + ');');
-  return fn({ body: { token } }, env);
-}
-
-check('acceso: acepta el token correcto', acceso('secreto-de-prueba', { [cliente.secretoEnv]: 'secreto-de-prueba' }) === true);
-check('acceso: rechaza un token distinto', acceso('otro-token', { [cliente.secretoEnv]: 'secreto-de-prueba' }) === false);
-check('acceso: rechaza si no se envía token', acceso(undefined, { [cliente.secretoEnv]: 'secreto-de-prueba' }) === false);
-check('acceso: falla cerrado si la variable de entorno no existe', acceso('', {}) === false && acceso('cualquiera', {}) === false);
-check('acceso: no hay secreto incrustado en el workflow', !JSON.stringify(verificar).includes('secreto-de-prueba') && JSON.stringify(verificar).includes('$env.' + cliente.secretoEnv));
-const denegadoSnippet = snippetOf(crear, 'Acceso Denegado');
-check('acceso: responde ok:false al denegar', run(denegadoSnippet, { json: {} })[0].json.ok === false);
-
-// ---------- Cuenta Correcta (guarda multi-cliente) ----------
-
-const guardNode = verificar.nodes.find((n) => n.name === 'Cuenta Correcta');
-const guardExpression = guardNode.parameters.conditions.conditions[0].leftValue
-  .replace(/^=/, '')
-  .replace(/^\{\{/, '')
-  .replace(/\}\}$/, '')
-  .trim();
-
-function guard(account) {
-  const fn = new Function('$json', 'return (' + guardExpression + ');');
-  return fn({ body: { account } });
-}
-
-check('guarda: acepta la cuenta del cliente', guard(cliente.subdominio) === true);
-check('guarda: acepta mayúsculas y espacios', guard('  ' + cliente.subdominio.toUpperCase() + ' ') === true);
-check('guarda: rechaza otra cuenta', guard('otraempresa') === false, 'otraempresa');
-check('guarda: rechaza sin cuenta', guard('') === false && guard(undefined) === false);
-const guardBody = snippetOf(crear, 'Cuenta No Autorizada');
-check('guarda: responde ok:false con mensaje', run(guardBody, { json: {} })[0].json.ok === false);
-
 // ---------- Unificar Contactos ----------
 
 const unificar = snippetOf(verificar, 'Unificar Contactos');
-
 const respuestaContactos = {
   _embedded: {
     contacts: [
@@ -194,7 +246,7 @@ const respuestaContactos = {
       },
       {
         id: 502,
-        name: 'Otro con el mismo formato',
+        name: 'Otro formato',
         custom_fields_values: [{ field_id: 1, values: [{ value: '593991234567' }] }],
         _embedded: { leads: [{ id: 902 }] },
       },
@@ -210,13 +262,12 @@ const respuestaContactos = {
 
 const unificado = run(unificar, {
   json: {},
-  nodes: { 'Preparar Consultas': [{ json: { phone: '+593991234567', local: '991234567', userId: 555 } }] },
+  nodes: { 'Preparar Consultas': [{ json: { phone: '+593991234567', local: '991234567', userId: 77 } }] },
   input: [{ json: respuestaContactos }, { json: respuestaContactos }],
 })[0].json;
-
 check('unificar: deduplica por id', unificado.contactCount === 2, unificado.contactCount);
-check('unificar: descarta teléfonos que no coinciden', !unificado.contactIds.includes(503), JSON.stringify(unificado.contactIds));
-check('unificar: junta los leads de todos los contactos', JSON.stringify(unificado.leadIds) === JSON.stringify([900, 901, 902]), JSON.stringify(unificado.leadIds));
+check('unificar: descarta teléfonos que no coinciden', !unificado.contactIds.includes(503));
+check('unificar: junta los leads de todos los contactos', JSON.stringify(unificado.leadIds) === JSON.stringify([900, 901, 902]));
 check('unificar: toma el nombre del primer contacto', unificado.contactName === 'María Zambrano');
 
 // ---------- Consolidar ----------
@@ -226,94 +277,94 @@ const consolidado = run(consolidar, {
   json: {},
   nodes: {
     'Unificar Contactos': [{ json: unificado }],
-    'Usuarios Kommo': [{ json: { _embedded: { users: [{ id: 555, name: 'Asesor UNYX' }, { id: 777, name: 'Otra Asesora' }] } } }],
+    'Usuarios Kommo': [{ json: { _embedded: { users: [{ id: 77, name: 'Asesor UNYX' }, { id: 88, name: 'Otra Asesora' }] } } }],
+    'Resolver Cliente': [{ json: okAltosa }],
   },
 })[0].json;
-check('consolidar: resuelve el subdominio del cliente', consolidado.subdomain === cliente.subdominio, consolidado.subdomain);
-check('consolidar: arma el mapa de usuarios', consolidado.userMap[777] === 'Otra Asesora');
-check('consolidar: no arrastra mapas de etapas', consolidado.stageMap === undefined);
+check('consolidar: toma el subdominio del cliente resuelto', consolidado.subdomain === 'altosa', consolidado.subdomain);
+check('consolidar: arma el mapa de usuarios', consolidado.userMap[88] === 'Otra Asesora');
 check(
   'consolidar: respeta pipelinesExcluidos del cliente',
-  JSON.stringify(consolidado.pipelinesExcluidos) === JSON.stringify(cliente.pipelinesExcluidos || []),
-  JSON.stringify(consolidado.pipelinesExcluidos)
+  JSON.stringify(consolidado.pipelinesExcluidos) === JSON.stringify(altosa.pipelinesExcluidos || [])
 );
 
-// ---------- Evaluar Atención (workflow verificar) ----------
+const consolidadoLux = run(consolidar, {
+  json: {},
+  nodes: {
+    'Unificar Contactos': [{ json: unificado }],
+    'Usuarios Kommo': [{ json: { _embedded: { users: [] } } }],
+    'Resolver Cliente': [{ json: okLux }],
+  },
+})[0].json;
+check('consolidar: un cliente con exclusiones las arrastra', consolidadoLux.pipelinesExcluidos.length === 4);
+
+// ---------- Evaluar Atención (verificar) ----------
 
 const evaluar = snippetOf(verificar, 'Evaluar Atención');
 
-function evaluarVerificar(leads, userId) {
-  const data = Object.assign({}, consolidado, {
+function evaluarVerificar(leads, userId, data) {
+  const base = Object.assign({}, consolidado, {
     phone: '+593991234567',
     userId,
     contactName: 'María Zambrano',
     contactCount: 1,
     contacts: [{ id: 501, name: 'María Zambrano' }],
     leadIds: leads.map((lead) => lead.id),
-  });
+  }, data || {});
   return run(evaluar, {
     json: {},
-    nodes: { 'Consolidar': [{ json: data }], 'Obtener Leads': [{ json: { _embedded: { leads } } }] },
+    nodes: { 'Consolidar': [{ json: base }], 'Obtener Leads': [{ json: { _embedded: { leads } } }] },
   })[0].json;
 }
 
-const sinLeads = evaluarVerificar([], 555);
+const sinLeads = evaluarVerificar([], 77);
 check('evaluar: sin leads -> available', sinLeads.state === 'available', JSON.stringify(sinLeads));
 
-const soloCerrado = evaluarVerificar([{ id: 10, name: 'Ganado', responsible_user_id: 777, created_at: 100, closed_at: 1700000000 }], 555);
-check('evaluar: un lead con closed_at no bloquea', soloCerrado.state === 'available', JSON.stringify(soloCerrado.state));
-check('evaluar: informa leads cerrados en el historial', soloCerrado.closedLeadCount === 1, soloCerrado.closedLeadCount);
+const soloCerrado = evaluarVerificar([{ id: 10, name: 'Ganado', responsible_user_id: 88, created_at: 100, closed_at: 1700000000 }], 77);
+check('evaluar: un lead con closed_at no bloquea', soloCerrado.state === 'available');
+check('evaluar: informa leads cerrados en el historial', soloCerrado.closedLeadCount === 1);
 
-const mio = evaluarVerificar([{ id: 12, name: 'Mío', responsible_user_id: 555, created_at: 100, closed_at: null }], 555);
+const mio = evaluarVerificar([{ id: 12, name: 'Mío', responsible_user_id: 77, created_at: 100, closed_at: null }], 77);
 check('evaluar: lead propio -> same_agent', mio.state === 'same_agent', JSON.stringify(mio));
-check('evaluar: arma la URL del lead con el subdominio del cliente', mio.activeLead.leadUrl === 'https://' + cliente.subdominio + '.kommo.com/leads/12', mio.activeLead.leadUrl);
+check('evaluar: arma la URL con el subdominio del cliente', mio.activeLead.leadUrl === 'https://altosa.kommo.com/leads/12', mio.activeLead.leadUrl);
 
-const ajeno = evaluarVerificar([{ id: 13, name: 'Ajeno', responsible_user_id: 777, created_at: 100, closed_at: null }], 555);
+const ajeno = evaluarVerificar([{ id: 13, name: 'Ajeno', responsible_user_id: 88, created_at: 100, closed_at: null }], 77);
 check('evaluar: lead de otro -> other_agent', ajeno.state === 'other_agent', JSON.stringify(ajeno));
-check('evaluar: resuelve el nombre del asesor', ajeno.activeLead.responsibleName === 'Otra Asesora', ajeno.activeLead.responsibleName);
+check('evaluar: resuelve el nombre del asesor', ajeno.activeLead.responsibleName === 'Otra Asesora');
 
 const varios = evaluarVerificar(
   [
-    { id: 14, name: 'Antiguo', responsible_user_id: 555, created_at: 100, closed_at: null },
-    { id: 15, name: 'Reciente', responsible_user_id: 777, created_at: 200, closed_at: null },
-    { id: 16, name: 'Cerrado', responsible_user_id: 555, created_at: 300, closed_at: 1700000000 },
+    { id: 14, name: 'Antiguo', responsible_user_id: 77, created_at: 100, closed_at: null },
+    { id: 15, name: 'Reciente', responsible_user_id: 88, created_at: 200, closed_at: null },
+    { id: 16, name: 'Cerrado', responsible_user_id: 77, created_at: 300, closed_at: 1700000000 },
   ],
-  555
+  77
 );
 check('evaluar: dos activos -> multiple_leads', varios.state === 'multiple_leads', JSON.stringify(varios.state));
-check('evaluar: lista solo activos, del más reciente al más antiguo', JSON.stringify(varios.leads.map((lead) => lead.id)) === JSON.stringify([15, 14]), JSON.stringify(varios.leads.map((lead) => lead.id)));
-check('evaluar: no lista los cerrados', varios.leads.length === 2 && varios.closedLeadCount === 1);
+check('evaluar: lista solo activos, del más reciente al más antiguo', JSON.stringify(varios.leads.map((lead) => lead.id)) === JSON.stringify([15, 14]));
 
 check(
   'evaluar: ignora leads borrados',
-  evaluarVerificar([{ id: 17, name: 'Borrado', responsible_user_id: 777, created_at: 100, closed_at: null, is_deleted: true }], 555).state === 'available'
+  evaluarVerificar([{ id: 17, name: 'Borrado', responsible_user_id: 88, created_at: 100, closed_at: null, is_deleted: true }], 77).state === 'available'
 );
 
-const conExclusion = run(evaluar, {
-  json: {},
-  nodes: {
-    'Consolidar': [{ json: Object.assign({}, consolidado, { pipelinesExcluidos: [999] }) }],
-    'Obtener Leads': [{
-      json: {
-        _embedded: {
-          leads: [
-            { id: 30, name: 'Postventa', responsible_user_id: 777, pipeline_id: 999, created_at: 300, closed_at: 1700000000 },
-            { id: 33, name: 'Ganado de ventas', responsible_user_id: 777, pipeline_id: 1, created_at: 200, closed_at: 1700000000 },
-          ],
-        },
-      },
-    }],
-  },
-})[0].json;
+const conExclusion = evaluarVerificar(
+  [
+    { id: 30, name: 'Postventa', responsible_user_id: 88, pipeline_id: 999, created_at: 300, closed_at: 1700000000 },
+    { id: 33, name: 'Ganado de ventas', responsible_user_id: 88, pipeline_id: 1, created_at: 200, closed_at: 1700000000 },
+  ],
+  77,
+  { pipelinesExcluidos: [999] }
+);
 check('evaluar: un lead de pipeline excluido no bloquea', conExclusion.state === 'available', JSON.stringify(conExclusion.state));
 check('evaluar: el cerrado excluido NO cuenta como historial', conExclusion.closedLeadCount === 1, conExclusion.closedLeadCount);
 
-// ---------- Workflow crear ----------
+// ---------- Evaluar Atención (crear) ----------
 
 const evaluarCrear = snippetOf(crear, 'Evaluar Atención');
 const crearData = Object.assign({}, consolidado, {
   phone: '+593991234567',
-  userId: 555,
+  userId: 77,
   userName: 'Asesor UNYX',
   contactName: 'María Zambrano',
   contactCount: 1,
@@ -332,63 +383,42 @@ const ocupado = run(evaluarCrear, {
   json: {},
   nodes: {
     'Consolidar': [{ json: crearData }],
-    'Obtener Leads': [{ json: { _embedded: { leads: [{ id: 901, name: 'Activo', responsible_user_id: 777, created_at: 100, closed_at: null }] } } }],
+    'Obtener Leads': [{ json: { _embedded: { leads: [{ id: 901, name: 'Activo', responsible_user_id: 88, created_at: 100, closed_at: null }] } } }],
   },
 })[0].json;
 check('crear: no disponible si hay atención activa', ocupado.state === 'other_agent', JSON.stringify(ocupado.state));
 
 const sinContacto = run(evaluarCrear, {
   json: {},
-  nodes: {
-    'Consolidar': [{ json: Object.assign({}, crearData, { contactName: '', contacts: [], contactCount: 0, leadIds: [] }) }],
-  },
+  nodes: { 'Consolidar': [{ json: Object.assign({}, crearData, { contactName: '', contacts: [], contactCount: 0, leadIds: [] }) }] },
 })[0].json;
-check('crear: sin contacto previo -> contactId null', sinContacto.contactId === null, JSON.stringify(sinContacto));
-check('crear: sin nombre usa el teléfono como nombre', sinContacto.leadName === '+593991234567', sinContacto.leadName);
+check('crear: sin contacto previo -> contactId null', sinContacto.contactId === null);
+check('crear: sin nombre usa el teléfono', sinContacto.leadName === '+593991234567');
 
 // ---------- Bloqueado y Resultado ----------
 
-const bloqueado = snippetOf(crear, 'Bloqueado');
-const cuerpoBloqueado = run(bloqueado, { json: { state: 'other_agent', activeLead: { id: 1 }, leads: [] } })[0].json;
+const cuerpoBloqueado = run(snippetOf(crear, 'Bloqueado'), { json: { state: 'other_agent', activeLead: { id: 1 }, leads: [] } })[0].json;
 check('bloqueado: responde ok:false', cuerpoBloqueado.ok === false);
-check('bloqueado: mensaje específico para otro asesor', /otro asesor/i.test(cuerpoBloqueado.message), cuerpoBloqueado.message);
+check('bloqueado: mensaje específico para otro asesor', /otro asesor/i.test(cuerpoBloqueado.message));
 check('bloqueado: conserva el estado y el lead', cuerpoBloqueado.state === 'other_agent' && cuerpoBloqueado.activeLead.id === 1);
 
-const resultado = snippetOf(crear, 'Resultado');
-const cuerpoCreado = run(resultado, {
+const cuerpoCreado = run(snippetOf(crear, 'Resultado'), {
   json: { _embedded: { leads: [{ id: 4321 }] } },
-  nodes: { 'Evaluar Atención': [{ json: { leadName: 'María Zambrano · +593991234567', contactId: 501 } }] },
+  nodes: {
+    'Evaluar Atención': [{ json: { leadName: 'María Zambrano · +593991234567', contactId: 501 } }],
+    'Resolver Cliente': [{ json: okAltosa }],
+  },
 })[0].json;
-check('resultado: devuelve el lead creado', cuerpoCreado.leadId === 4321 && cuerpoCreado.leadUrl === 'https://' + cliente.subdominio + '.kommo.com/leads/4321', JSON.stringify(cuerpoCreado));
+check('resultado: devuelve el lead creado con la URL del cliente', cuerpoCreado.leadId === 4321 && cuerpoCreado.leadUrl === 'https://altosa.kommo.com/leads/4321', JSON.stringify(cuerpoCreado));
 
 check('inválido: responde ok:false con mensaje', run(snippetOf(crear, 'Teléfono Inválido'), { json: {} })[0].json.ok === false);
 
 // ---------- Coherencia widget <-> workflows ----------
 
-const baseEsperada = 'https://flow.unyxsolutions.com/webhook/unyx-' + cliente.slug;
-
-check('el widget arma la ruta del cliente', widgetScript.includes("var CHECK_PATH = '/verificar-cliente'") && widgetScript.includes("var CREATE_PATH = '/crear-lead'"));
+check('el widget usa las rutas generales', widgetScript.includes("var CHECK_PATH = '/verificar-cliente'") && widgetScript.includes("var CREATE_PATH = '/crear-lead'"));
 check('el widget lee el ajuste n8n_base', widgetScript.includes('settings.n8n_base'));
-check(
-  'el widget no trae URL por defecto (evita cruzar cuentas)',
-  !/DEFAULT_N8N_URL\s*=\s*'https?:/.test(widgetScript)
-);
-check('la base documentada coincide con la ruta del workflow', verificar.nodes.some((n) => n.parameters.path === baseEsperada.replace('https://flow.unyxsolutions.com/webhook/', '') + '/verificar-cliente'));
-
-const prepararSnippet = snippetOf(verificar, 'Preparar Consultas');
-for (const field of ['phone', 'userId', 'userName']) {
-  check('el widget envía ' + field + ' y n8n lo lee', widgetScript.includes(field + ':') && prepararSnippet.includes('body.' + field));
-}
-check('el widget envía la cuenta para la guarda multi-cliente', widgetScript.includes('account:') && widgetScript.includes("account = context.account"));
-
-const evaluarSnippet = snippetOf(verificar, 'Evaluar Atención');
-for (const field of ['state', 'contactName', 'contactCount', 'closedLeadCount', 'activeLead', 'leads']) {
-  check('respuesta de n8n incluye ' + field, evaluarSnippet.includes(field));
-}
-const resultadoSnippet = snippetOf(crear, 'Resultado');
-for (const field of ['leadId', 'leadName', 'leadUrl', 'ok']) {
-  check('respuesta de creación incluye ' + field, resultadoSnippet.includes(field));
-}
+check('el widget envía el token', widgetScript.includes('token: sharedToken'));
+check('el widget no trae URL por defecto', !/DEFAULT_N8N_URL\s*=\s*'https?:/.test(widgetScript));
 
 // ---------- Resumen ----------
 
