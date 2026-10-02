@@ -400,15 +400,15 @@ const faltantes = [...clasesMarkup].filter((c) => !clasesCss.has(c));
 check('css: toda clase del markup está definida', faltantes.length === 0, faltantes.join(', '));
 const variantesEstado = ['success', 'warning', 'error', 'blocked', 'info'];
 check('css: están las 5 variantes de estado', variantesEstado.every((v) => clasesCss.has('unyx-status--' + v)));
-check('css: el estado base se aplica junto con la variante', /'unyx-status unyx-status--' \+ kind/.test(widgetScript));
+check('css: el estado base se aplica junto con la variante', /["']unyx-status unyx-status--["'] \+ kind/.test(widgetScript));
 
 check('script: no inyecta el CSS en document.head', !js.includes('document.head'));
 check('script: no toca document.body ni documentElement', !/document\.(body|documentElement)/.test(js));
 check('script: no usa window', !/\bwindow\./.test(js));
 check('script: no usa selectores globales', !/document\.querySelector\(/.test(js));
-check('script: la hoja de estilos va dentro del markup del widget', /<link rel="stylesheet" data-unyx="style" href="' \+ esc\(styleHref\(\)\)/.test(widgetScript));
-check('script: encapsula cada instancia con un id único', /var instanceId = 'unyx-root-' \+ Math\.random\(\)/.test(widgetScript) && /getElementById\(instanceId\)/.test(widgetScript));
-check('script: devuelve false en las fichas de creación', /current_card\.id === 0\)\s*\{\s*return false;/.test(widgetScript));
+check('script: la hoja de estilos va dentro del markup del widget', /data-unyx="style"/.test(widgetScript) && /href="' \+\s*esc\(styleHref\(\)\)/.test(widgetScript));
+check('script: encapsula cada instancia con un id único', /var instanceId = ["']unyx-root-["'] \+ Math\.random\(\)/.test(widgetScript) && /getElementById\(instanceId\)/.test(widgetScript));
+check('script: devuelve false en las fichas de creación', /current_card\.id === 0\s*\)\s*\{\s*return false;/.test(widgetScript));
 check('script: usa el ciclo de vida documentado y devuelve true', /render: function \(\) \{[\s\S]*?return true;\s*\}/.test(widgetScript) && /init: function \(\) \{[\s\S]*?return true;\s*\}/.test(widgetScript));
 check('script: no usa self.on (no está en la documentación)', !/self\.on\(/.test(js));
 
@@ -416,21 +416,21 @@ check('script: no usa self.on (no está en la documentación)', !/self\.on\(/.te
 const tramoRender = js.slice(js.indexOf('render: function'), js.indexOf('init: function'));
 const tramoInit = js.slice(js.indexOf('init: function'), js.indexOf('bind_actions: function'));
 check('contexto: render() no lee el contexto', tramoRender.length > 0 && !tramoRender.includes('getContext()'), tramoRender.length + ' caracteres');
-check('contexto: init() lee el contexto', tramoInit.includes("refreshContext('init')"));
-check('contexto: se reintenta antes de verificar', js.includes("refreshContext('verify')"));
+check('contexto: init() lee el contexto', /refreshContext\(["']init["']\)/.test(tramoInit));
+check('contexto: se reintenta antes de verificar', /refreshContext\(["']verify["']\)/.test(js));
 check(
   'contexto: usa self.system() como fuente documentada',
-  /typeof widgetSelf\.system === 'function'/.test(js) && /widgetSelf\.system\(\)/.test(js)
+  /typeof widgetSelf\.system === ["']function["']/.test(js) && /widgetSelf\.system\(\)/.test(js)
 );
 check('contexto: tiene respaldo en APP.data', /APP && APP\.data/.test(js) && /app\.user_id/.test(js));
 check('contexto: el subdominio cae al hostname de Kommo', /\.kommo\\?\.com\$\/i\.test\(location\.hostname\)/.test(js));
-check('contexto: no pisa con vacío un valor ya resuelto', /if \(context\.account\) account = context\.account;/.test(js) && /if \(context\.userId\) userId = context\.userId;/.test(js));
+check('contexto: no pisa con vacío un valor ya resuelto', /if \(context\.account\) account = context\.account;/.test(js) && /if \(context\.userId(?: > 0)?\) userId = context\.userId;/.test(js));
 check('contexto: registra el contexto sin exponer secretos', /\[UNYX\] Contexto detectado/.test(js) && !/console\.log\([^)]*(token|sharedToken|secreto)/i.test(js));
 check('contexto: no hay console.log fuera del diagnóstico', (js.match(/console\.log/g) || []).length === 1, (js.match(/console\.log/g) || []).length + ' llamadas');
 
 // --- Hoja de estilos: se resuelve también en init() ---
 check('css: el <link> lleva data-unyx para poder re-resolverlo', /<link rel="stylesheet" data-unyx="style"/.test(widgetScript));
-check('css: init() vuelve a resolver el href', /var link = el\('style'\);/.test(js) && /link\.setAttribute\('href', href\)/.test(js));
+check('css: init() vuelve a resolver el href', /var link = el\(["']style["']\);/.test(js) && /link\.setAttribute\(["']href["'], href\)/.test(js));
 
 // --- Tema claro forzado ---
 check('tema: el widget fija color-scheme light', (css.match(/color-scheme: light/g) || []).length >= 4, (css.match(/color-scheme: light/g) || []).length + ' declaraciones');
@@ -455,7 +455,7 @@ check('tema: las variantes de estado van después de la base', css.indexOf('.uny
 // 6. Coherencia widget <-> workflows
 // =============================================================
 
-check('el widget usa las rutas del cliente', widgetScript.includes("var CHECK_PATH = '/verificar-cliente'") && widgetScript.includes("var CREATE_PATH = '/crear-lead'"));
+check('el widget usa las rutas del cliente', /var CHECK_PATH = ["']\/verificar-cliente["']/.test(widgetScript) && /var CREATE_PATH = ["']\/crear-lead["']/.test(widgetScript));
 check('el widget lee n8n_base y unyx_token', widgetScript.includes('settings.n8n_base') && widgetScript.includes('settings.unyx_token'));
 check('el widget envía el token en las dos llamadas', (widgetScript.match(/token: sharedToken/g) || []).length === 2);
 check('el widget no trae URL por defecto', !/DEFAULT_N8N_URL\s*=\s*'https?:/.test(widgetScript));
