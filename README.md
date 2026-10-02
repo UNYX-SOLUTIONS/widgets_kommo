@@ -18,7 +18,7 @@ widgets_kommo/
 │   │   ├── i18n/  images/
 │   │   ├── index.html  preview.js    ← vista previa local (no se empaquetan)
 │   │   └── README.md
-│   └── n8n/                          ← backend del widget: 1 par con una rama por cliente (Switch)
+│   └── n8n/                          ← backend del widget: 1 par por cliente (UNYX es la madre)
 │       ├── clientes.json             ← una entrada por cuenta de Kommo
 │       ├── unyx-verificar-cliente.json
 │       ├── unyx-crear-lead.json

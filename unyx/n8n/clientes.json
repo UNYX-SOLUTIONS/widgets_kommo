@@ -1,64 +1,42 @@
 {
   "clientes": [
     {
-      "slug": "meditec",
-      "nombre": "Meditec",
-      "subdominio": "meditecec",
-      "tokenSwitch": "PEGAR_TOKEN_MEDITEC",
+      "slug": "unyx",
+      "nombre": "UNYX",
+      "subdominio": "unyx",
+      "tokenWidget": "PEGAR_TOKEN_UNYX",
       "credencial": {
-        "id": "rsBfubSe7f022RsT",
-        "name": "Kommo Meditec Token",
+        "id": "PEGAR_ID_CREDENCIAL_UNYX",
+        "name": "Kommo UNYX Token",
         "tipo": "httpHeaderAuth"
       },
       "pipelinesExcluidos": []
-    },
-    {
-      "slug": "altosa",
-      "nombre": "Altosa",
-      "subdominio": "altosa",
-      "tokenSwitch": "PEGAR_TOKEN_ALTOSA",
-      "credencial": {
-        "id": "PEGAR_ID_CREDENCIAL_ALTOSA",
-        "name": "Kommo Altosa Token",
-        "tipo": "httpHeaderAuth"
-      },
-      "pipelinesExcluidos": []
-    },
-    {
-      "slug": "luxviajes",
-      "nombre": "LuxViajes",
-      "subdominio": "agencialuxviajes",
-      "tokenSwitch": "PEGAR_TOKEN_LUXVIAJES",
-      "credencial": {
-        "id": "7VB4zRZNA0UkBt6D",
-        "name": "Bearer Auth account",
-        "tipo": "httpBearerAuth"
-      },
-      "pipelinesExcluidos": [13416240, 13629516, 13629520, 13680940]
     }
   ],
   "_ayuda": [
-    "Un cliente = una rama del Switch = su propia credencial de n8n para Kommo.",
-    "El Switch compara el token que envia el widget y manda la peticion a la rama del cliente.",
+    "UNYX es la configuracion madre. Un cliente = una entrada aqui = su propio PAR de workflows.",
+    "No hay Switch ni ramas: cada cliente tiene sus dos workflows completos e independientes.",
     "",
     "Campos por cliente:",
-    "  slug                identificador corto, se usa para los ids de nodo",
-    "  nombre              nombre visible; es el nombre de la salida del Switch y el prefijo de sus nodos",
-    "  subdominio          SUBDOMINIO.kommo.com, sin https y sin .kommo.com",
-    "  tokenSwitch         token del widget de ese cliente. Se genera aparte (ver README) y se pega",
-    "                      en el nodo Switch dentro de n8n: NO se escribe aqui.",
-    "  credencial.id       id de la credencial de n8n con el token de Kommo del cliente.",
+    "  slug                identificador corto. Forma el nombre de los archivos y la ruta del webhook.",
+    "  nombre              nombre visible en n8n y en los mensajes",
+    "  subdominio          SUBDOMINIO.kommo.com, sin https y sin .kommo.com. Va escrito en las URLs de los nodos.",
+    "  tokenWidget         token de acceso del widget. Se genera aparte (ver README) y se pega en el",
+    "                      nodo '¿Autorizado?' dentro de n8n: NO se escribe aqui.",
+    "  credencial.id       id de la credencial de n8n con el token de larga duracion de Kommo.",
     "                      Se ve en la URL al abrir la credencial en n8n.",
     "  credencial.tipo     httpHeaderAuth (cabecera 'Authorization: Bearer <token>') o httpBearerAuth.",
     "                      Debe coincidir con el tipo real en n8n o el nodo queda sin credencial.",
     "  pipelinesExcluidos  pipelines que NO cuentan como atencion activa",
     "",
-    "Pasos para agregar un cliente:",
+    "Agregar un cliente (duplicar el workflow completo):",
     "  1. Crear la integracion privada en su Kommo y obtener el token de larga duracion.",
     "  2. Crear en n8n una credencial Header Auth con ese token.",
-    "  3. Agregar la entrada aqui.",
-    "  4. node unyx/n8n/build.js  y reimportar los DOS workflows.",
-    "  5. En n8n, abrir 'Switch Cliente' y pegar el token del widget en la regla de ese cliente.",
-    "     (Son 2 workflows: hay que repetirlo en cada uno.)"
+    "  3. Generar el token del widget para ese cliente.",
+    "  4. Agregar su entrada a esta lista.",
+    "  5. node unyx/n8n/build.js  -> salen <slug>-verificar-cliente.json y <slug>-crear-lead.json",
+    "  6. Importar ese par en n8n, pegar el token en '¿Autorizado?' y activarlos.",
+    "  7. Instalar el widget en esa cuenta con la URL https://flow.unyxsolutions.com/webhook/<slug>",
+    "     y su token de acceso."
   ]
 }

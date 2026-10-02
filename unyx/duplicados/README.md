@@ -18,7 +18,7 @@ de workflows generales**: el cliente se decide por el token.
 |---|---|
 | Interfaz del card y los 8 estados | **Hecho** (`script.js`, `style.css`, `i18n/es.json`) |
 | Llamadas del widget a n8n | **Hecho** (vía `self.crm_post`, sin CORS) |
-| Workflows de n8n | **Hechos**: Switch por cliente, una rama por cuenta |
+| Workflows de n8n | **Hechos**: un par por cliente (UNYX es la madre) |
 | Reglas de negocio probadas sin n8n | **Hecho** (102 comprobaciones) |
 | Bug de carga en Kommo | **Corregido** (ver abajo); pendiente de confirmar en la cuenta real |
 | Logos oficiales | **Hecho** desde `images/unyx.png`; falta un isotipo cuadrado para `logo_min`/`logo_small` |
@@ -75,12 +75,11 @@ del panel del widget, y que alguna extensión del navegador interfiera.
 ## Arquitectura
 
 ```text
-Widget (dentro de Kommo)        n8n (un par general)            Kommo API v4
+Widget (dentro de Kommo)        n8n (un par por cliente)        Kommo API v4
   script.js
      │  self.crm_post(form)
      └──────────────────────►  /webhook/unyx/verificar-cliente
-                                  │ Switch Cliente (una rama por cuenta)
-                                  │ ¿Autorizado?
+                                  │ ¿Autorizado? (token + cuenta)
                                   │ contacts?query=…&with=leads
                                   │ leads?filter[id][]=…
                                   │ users
@@ -93,7 +92,7 @@ Widget (dentro de Kommo)        n8n (un par general)            Kommo API v4
                                   │ leads (asigna al asesor)
 ```
 
-- El token de Kommo de cada cliente vive **solo en una credencial de n8n**. El
+- El token de Kommo de cada cliente vive **sólo en una credencial de n8n**. El
   widget no contiene credenciales ni llama a la API de Kommo.
 - Se usa `self.crm_post` (proxy de Kommo) en vez de `fetch`: no hay CORS.
 - El asesor actual se toma de `self.system().user_id`; n8n lo usa como
@@ -109,7 +108,7 @@ Dos ajustes, ambos obligatorios al instalar:
 | Ajuste | Valor |
 |---|---|
 | *URL de los webhooks de n8n* | `https://flow.unyxsolutions.com/webhook/unyx` — **igual para todos los clientes** |
-| *Token de acceso de esta cuenta* | el token que pegaste en `Switch Cliente` para esa cuenta |
+| *Token de acceso de esta cuenta* | el token que pegaste en el nodo `¿Autorizado?` del workflow |
 
 El widget añade `/verificar-cliente` y `/crear-lead` a esa URL.
 
