@@ -5,8 +5,8 @@
     "description": "Verifica si un cliente ya posee una atención activa antes de crear un nuevo lead."
   },
   "settings": {
-    "n8n_base": "URL de los webhooks de n8n para esta cuenta (ej. https://flow.unyxsolutions.com/webhook/unyx-meditec)",
-    "unyx_token": "Token de acceso del widget (lo entrega UNYX)"
+    "n8n_base": "URL de los webhooks de n8n (https://flow.unyxsolutions.com/webhook/unyx)",
+    "unyx_token": "Token de acceso de esta cuenta (el que definiste en n8n)"
   },
   "ui": {
     "formLabel": "Número de teléfono",

@@ -1,20 +1,20 @@
 {
-  "name": "UNYX - LuxViajes - Crear Lead",
+  "name": "UNYX - Crear Lead",
   "nodes": [
     {
       "parameters": {
         "httpMethod": "POST",
-        "path": "unyx-luxviajes/crear-lead",
+        "path": "unyx/crear-lead",
         "responseMode": "responseNode",
         "options": {}
       },
-      "id": "unyx-c-webhook",
+      "id": "aaa1afc0-4d17-4326-ae31-20e68964f0c9",
       "name": "Webhook Widget",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
       "position": [
-        0,
-        300
+        4528,
+        1280
       ],
       "webhookId": "b1a7c3d5-0002-4a6b-8c9d-0e1f2a3b4c02"
     },
@@ -29,8 +29,8 @@
           },
           "conditions": [
             {
-              "id": "unyx-c-acceso-cond",
-              "leftValue": "={{ Boolean($env.UNYX_SECRET_LUXVIAJES) && String($json.body && $json.body.token || \"\") === String($env.UNYX_SECRET_LUXVIAJES) }}",
+              "id": "unyx-c-autorizado-cond",
+              "leftValue": "={{ String($json.body && $json.body.token || \"\") === \"41c9f45b5bfead6dffeb34bbad35ed3be13ba234af746ef7433d7c1fd50ddd01\" && String($json.body && $json.body.account || \"\").trim().toLowerCase() === \"unyx\" }}",
               "rightValue": "",
               "operator": {
                 "type": "boolean",
@@ -43,73 +43,26 @@
         },
         "options": {}
       },
-      "id": "unyx-c-acceso",
-      "name": "Acceso Autorizado",
+      "id": "1e9eb259-95b0-480b-9205-aaadb14cfa5c",
+      "name": "¿Autorizado?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        220,
-        300
+        4752,
+        1280
       ]
     },
     {
       "parameters": {
-        "jsCode": "// =============================================================\n// UNYX · Verificar Cliente — Nodo \"Acceso Denegado\"\n// El widget envía un token compartido en el cuerpo (self.crm_post no permite\n// cabeceras personalizadas). Se compara contra una variable de entorno de n8n,\n// no contra un valor del repositorio: el secreto nunca se versiona.\n//\n// Si la variable de entorno está vacía, la comparación falla y TODO se deniega\n// (fail-closed): así un despliegue sin configurar no queda abierto a internet.\n// =============================================================\nreturn [{\n  json: {\n    ok: false,\n    message: 'Acceso no autorizado. Revise el token del widget o contacte al administrador.',\n  },\n}];"
+        "jsCode": "// =============================================================\n// UNYX · Verificar Cliente — Nodo \"Acceso Denegado\"\n//\n// El nodo \"¿Autorizado?\" ya comprobó el token del widget y la cuenta; aquí\n// sólo se arma la respuesta. Un solo nodo cubre los dos motivos posibles:\n// token que no corresponde, o widget instalado en la cuenta equivocada.\n// =============================================================\nreturn [{\n  json: {\n    ok: false,\n    message: 'Acceso no autorizado. El token del widget no es el de esta cuenta o el widget está mal configurado.',\n  },\n}];"
       },
-      "id": "unyx-c-denegado",
+      "id": "95740b17-d838-497b-917d-f69dc75b6a15",
       "name": "Acceso Denegado",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        440,
-        560
-      ]
-    },
-    {
-      "parameters": {
-        "conditions": {
-          "options": {
-            "caseSensitive": true,
-            "leftValue": "",
-            "typeValidation": "strict",
-            "version": 2
-          },
-          "conditions": [
-            {
-              "id": "unyx-c-cuenta-cond",
-              "leftValue": "={{ String($json.body && $json.body.account || \"\").trim().toLowerCase() === \"agencialuxviajes\" }}",
-              "rightValue": "",
-              "operator": {
-                "type": "boolean",
-                "operation": "true",
-                "singleValue": true
-              }
-            }
-          ],
-          "combinator": "and"
-        },
-        "options": {}
-      },
-      "id": "unyx-c-cuenta",
-      "name": "Cuenta Correcta",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2.2,
-      "position": [
-        440,
-        300
-      ]
-    },
-    {
-      "parameters": {
-        "jsCode": "// =============================================================\n// UNYX · Verificar Cliente — Nodo \"Cuenta No Autorizada\"\n// El widget se instala en varias cuentas de Kommo y cada una tiene su propio\n// workflow. Si el widget de otra cuenta apunta aquí, se corta antes de tocar\n// la API: de otro modo el asesor vería datos (y podría crear leads) en la\n// cuenta equivocada usando este token.\n// =============================================================\nreturn [{\n  json: {\n    ok: false,\n    message: 'Este widget no está configurado para esta cuenta de Kommo. Revise la URL de n8n en los ajustes del widget.',\n  },\n}];"
-      },
-      "id": "unyx-c-cuenta-err",
-      "name": "Cuenta No Autorizada",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        660,
-        560
+        4992,
+        1792
       ]
     },
     {
@@ -137,54 +90,46 @@
         },
         "options": {}
       },
-      "id": "unyx-c-telefono",
+      "id": "c2f95f35-6aca-45b9-ab77-17716a956900",
       "name": "Teléfono Válido",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        660,
-        300
+        4976,
+        1280
       ]
     },
     {
       "parameters": {
         "jsCode": "// =============================================================\n// UNYX · Verificar Cliente — Nodo \"Teléfono Inválido\"\n// Se responde 200 con ok:false para que el widget muestre el mensaje\n// exacto en lugar del error genérico de red.\n// =============================================================\nreturn [{\n  json: {\n    ok: false,\n    message: 'Ingrese 9 dígitos y seleccione un celular válido.',\n  },\n}];"
       },
-      "id": "unyx-c-telefono-err",
+      "id": "10d65487-0c2d-4fd3-b681-ed372ec5d2dd",
       "name": "Teléfono Inválido",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        880,
-        560
+        5312,
+        1584
       ]
     },
     {
       "parameters": {
-        "jsCode": "// =============================================================\n// UNYX · Verificar Cliente — Nodo \"Preparar Consultas\"\n// Normaliza el celular ecuatoriano y genera una consulta por variante.\n// El webhook recibe el body como formulario (self.crm_post de Kommo) o JSON.\n// =============================================================\nconst body = $json.body || $json;\n\nconst digits = String(body.phone || '').replace(/\\D/g, '');\nlet local = digits;\nif (local.startsWith('593')) local = local.slice(3);\nif (local.startsWith('0')) local = local.slice(1);\n\nif (!/^9\\d{8}$/.test(local)) {\n  throw new Error('Teléfono inválido: se esperaban 9 dígitos de celular ecuatoriano.');\n}\n\nconst phone = '+593' + local;\nconst userId = parseInt(body.userId || 0, 10) || 0;\nconst userName = String(body.userName || '').trim();\n\n// Kommo busca por texto libre sobre los campos personalizados: se consultan\n// las tres formas habituales de guardar el número y luego se compara exacto.\nconst variants = [local, '0' + local, phone];\n\nreturn variants.map((variant) => ({\n  json: { variant, phone, local, userId, userName },\n}));"
+        "jsCode": "// =============================================================\n// UNYX · Verificar Cliente — Nodo \"Preparar Consultas\"\n// Normaliza el celular ecuatoriano y genera una consulta por variante.\n// El payload viene del webhook (cuerpo de formulario de self.crm_post o JSON).\n// =============================================================\nconst body = $json.body || $json;\n\nconst digits = String(body.phone || '').replace(/\\D/g, '');\nlet local = digits;\nif (local.startsWith('593')) local = local.slice(3);\nif (local.startsWith('0')) local = local.slice(1);\n\nif (!/^9\\d{8}$/.test(local)) {\n  throw new Error('Teléfono inválido: se esperaban 9 dígitos de celular ecuatoriano.');\n}\n\nconst phone = '+593' + local;\nconst userId = parseInt(body.userId || 0, 10) || 0;\nconst userName = String(body.userName || '').trim();\n\n// Kommo busca por texto libre sobre los campos personalizados: se consultan\n// las tres formas habituales de guardar el número y luego se compara exacto.\nconst variants = [local, '0' + local, phone];\n\nreturn variants.map((variant) => ({\n  json: { variant, phone, local, userId, userName },\n}));"
       },
-      "id": "unyx-c-preparar",
+      "id": "383a3afa-ec97-4e7e-84de-6ad63084eaa7",
       "name": "Preparar Consultas",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        880,
-        180
+        5200,
+        1152
       ]
     },
     {
       "parameters": {
+        "url": "https://unyx.kommo.com/api/v4/contacts",
         "authentication": "genericCredentialType",
-        "genericAuthType": "httpBearerAuth",
-        "options": {
-          "response": {
-            "response": {
-              "responseFormat": "json"
-            }
-          }
-        },
-        "method": "GET",
-        "url": "https://agencialuxviajes.kommo.com/api/v4/contacts",
+        "genericAuthType": "httpHeaderAuth",
         "sendQuery": true,
         "queryParameters": {
           "parameters": [
@@ -201,20 +146,27 @@
               "value": "250"
             }
           ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
         }
       },
-      "id": "unyx-c-contactos",
+      "id": "0dfc324d-b9d3-4d60-a765-34f5800f5e11",
       "name": "Buscar Contactos",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        1100,
-        180
+        5408,
+        1152
       ],
       "credentials": {
-        "httpBearerAuth": {
-          "id": "7VB4zRZNA0UkBt6D",
-          "name": "Bearer Auth account"
+        "httpHeaderAuth": {
+          "id": "fRLOGrD5I32LciFR",
+          "name": "Unyx-Credential-widget"
         }
       }
     },
@@ -222,28 +174,20 @@
       "parameters": {
         "jsCode": "// =============================================================\n// UNYX · Verificar Cliente — Nodo \"Unificar Contactos\"\n// Recibe la respuesta de cada variante, deduplica por id y descarta los\n// contactos cuyo teléfono no coincide exactamente con el buscado.\n// Recoge también los ids de los leads enlazados (with=leads).\n// =============================================================\nconst first = $('Preparar Consultas').first().json;\nconst target = first.local;\n\nfunction digitsOf(value) {\n  return String(value === null || value === undefined ? '' : value).replace(/\\D/g, '');\n}\n\nfunction phonesMatch(value) {\n  let candidate = digitsOf(value);\n  if (!candidate || candidate.length < 7 || candidate.length > 15) return false;\n  if (candidate.startsWith('593')) candidate = candidate.slice(3);\n  if (candidate.startsWith('0')) candidate = candidate.slice(1);\n  return candidate === target;\n}\n\nconst contactsById = new Map();\n\nfor (const item of $input.all()) {\n  const contacts = item.json?._embedded?.contacts ?? [];\n  for (const contact of contacts) {\n    if (!contact || contact.is_deleted) continue;\n    const phones = [];\n    for (const field of contact.custom_fields_values ?? []) {\n      for (const entry of field.values ?? []) {\n        if (entry && entry.value !== undefined && entry.value !== null) phones.push(entry.value);\n      }\n    }\n    if (phones.some(phonesMatch)) contactsById.set(contact.id, contact);\n  }\n}\n\nconst contacts = [...contactsById.values()];\nconst leadIds = [];\n\nfor (const contact of contacts) {\n  for (const lead of contact._embedded?.leads ?? []) {\n    if (lead && lead.id && !leadIds.includes(lead.id)) leadIds.push(lead.id);\n  }\n}\n\nreturn [{\n  json: {\n    phone: first.phone,\n    userId: first.userId,\n    userName: first.userName,\n    contactCount: contacts.length,\n    contactName: contacts[0]?.name ?? '',\n    contactIds: contacts.map((contact) => contact.id),\n    contacts: contacts.map((contact) => ({ id: contact.id, name: contact.name ?? '' })),\n    leadIds,\n  },\n}];"
       },
-      "id": "unyx-c-unificar",
+      "id": "51abbd1a-2d00-4d1d-90b8-2d42d7ce64ab",
       "name": "Unificar Contactos",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1320,
-        180
+        5632,
+        1152
       ]
     },
     {
       "parameters": {
+        "url": "https://unyx.kommo.com/api/v4/users",
         "authentication": "genericCredentialType",
-        "genericAuthType": "httpBearerAuth",
-        "options": {
-          "response": {
-            "response": {
-              "responseFormat": "json"
-            }
-          }
-        },
-        "method": "GET",
-        "url": "https://agencialuxviajes.kommo.com/api/v4/users",
+        "genericAuthType": "httpHeaderAuth",
         "sendQuery": true,
         "queryParameters": {
           "parameters": [
@@ -252,36 +196,43 @@
               "value": "250"
             }
           ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
         }
       },
-      "id": "unyx-c-usuarios",
+      "id": "97a2ab3a-d184-46e9-b9e4-7f59ed2cfe37",
       "name": "Usuarios Kommo",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        1540,
-        180
+        5856,
+        1152
       ],
+      "alwaysOutputData": true,
       "credentials": {
-        "httpBearerAuth": {
-          "id": "7VB4zRZNA0UkBt6D",
-          "name": "Bearer Auth account"
+        "httpHeaderAuth": {
+          "id": "fRLOGrD5I32LciFR",
+          "name": "Unyx-Credential-widget"
         }
       },
-      "onError": "continueRegularOutput",
-      "alwaysOutputData": true
+      "onError": "continueRegularOutput"
     },
     {
       "parameters": {
-        "jsCode": "// =============================================================\n// UNYX · Verificar Cliente — Nodo \"Consolidar\"\n// Junta los datos del contacto con los nombres de los usuarios, para poder\n// evaluar cada lead. No consulta pipelines ni etapas: la regla de atención\n// activa se basa en closed_at (ver _comun.js).\n// =============================================================\nconst base = $('Unificar Contactos').first().json;\n\nconst userMap = {};\ntry {\n  const users = $('Usuarios Kommo').first().json?._embedded?.users ?? [];\n  for (const user of users) userMap[user.id] = user.name;\n} catch (error) {\n  // Sin permisos de administrador la lista de usuarios puede fallar:\n  // se degrada a mostrar solo los ids.\n}\n\nreturn [{\n  json: {\n    ...base,\n    subdomain: 'agencialuxviajes',\n    pipelinesExcluidos: [13416240,13629516,13629520,13680940],\n    userMap,\n  },\n}];"
+        "jsCode": "// =============================================================\n// UNYX · Verificar Cliente — Nodo \"Consolidar\"\n// Junta los datos del contacto con los nombres de los usuarios y con las\n// constantes del cliente de esta rama (subdominio y pipelines excluidos).\n//\n// No consulta pipelines ni etapas: la regla de atención activa se basa en\n// closed_at (ver _comun.js).\n// =============================================================\nconst base = $('Unificar Contactos').first().json;\n\nconst userMap = {};\ntry {\n  const users = $('Usuarios Kommo').first().json?._embedded?.users ?? [];\n  for (const user of users) userMap[user.id] = user.name;\n} catch (error) {\n  // Sin permisos de administrador la lista de usuarios puede fallar:\n  // se degrada a mostrar solo los ids.\n}\n\nreturn [{\n  json: {\n    ...base,\n    subdomain: 'unyx',\n    pipelinesExcluidos: [],\n    userMap,\n  },\n}];"
       },
-      "id": "unyx-c-consolidar",
+      "id": "416f145c-cb8a-46bc-8de5-f02287c96aa0",
       "name": "Consolidar",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1760,
-        180
+        6080,
+        1152
       ]
     },
     {
@@ -309,43 +260,55 @@
         },
         "options": {}
       },
-      "id": "unyx-c-tiene-leads",
+      "id": "2ba8c986-fc4e-4c3d-b7b4-a8ce701ce524",
       "name": "¿Tiene Leads?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        1980,
-        180
+        6288,
+        1152
       ]
     },
     {
       "parameters": {
+        "url": "https://unyx.kommo.com/api/v4/leads?limit=250&{{ $json.leadIds.map((id) => \"filter[id][]=\" + id).join(\"&\") }}",
         "authentication": "genericCredentialType",
-        "genericAuthType": "httpBearerAuth",
+        "genericAuthType": "httpHeaderAuth",
         "options": {
           "response": {
             "response": {
               "responseFormat": "json"
             }
           }
-        },
-        "method": "GET",
-        "url": "=https://agencialuxviajes.kommo.com/api/v4/leads?limit=250&{{ $json.leadIds.map((id) => \"filter[id][]=\" + id).join(\"&\") }}"
+        }
       },
-      "id": "unyx-c-leads",
+      "id": "27228c3e-7a27-4f4d-b4bb-04452b3b18f3",
       "name": "Obtener Leads",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        2200,
-        80
+        6512,
+        1056
       ],
       "credentials": {
-        "httpBearerAuth": {
-          "id": "7VB4zRZNA0UkBt6D",
-          "name": "Bearer Auth account"
+        "httpHeaderAuth": {
+          "id": "fRLOGrD5I32LciFR",
+          "name": "Unyx-Credential-widget"
         }
       }
+    },
+    {
+      "parameters": {
+        "jsCode": "// =============================================================\n// UNYX · Verificar Cliente — Reglas compartidas\n// Este archivo NO se ejecuta solo: build.js lo antepone a los nodos que\n// evalúan leads, para que la regla de \"atención activa\" viva en un solo lugar.\n//\n// REGLA: un lead está ACTIVO si no tiene closed_at.\n// Kommo marca closed_at cuando el lead se cierra (ganado o perdido) y lo\n// limpia si se reabre. Por eso no hace falta consultar pipelines ni etapas:\n// la regla funciona igual en cualquier cuenta y en cualquier pipeline.\n// =============================================================\n\nfunction unyxIsActive(lead, data) {\n  if (!lead || lead.is_deleted) return false;\n  if (data && (data.pipelinesExcluidos || []).includes(lead.pipeline_id)) return false;\n  return !lead.closed_at;\n}\n\nfunction unyxDecorate(lead, data) {\n  return {\n    id: lead.id,\n    name: lead.name || '#' + lead.id,\n    created_at: lead.created_at || 0,\n    responsible_user_id: lead.responsible_user_id || 0,\n    responsibleName: data.userMap[lead.responsible_user_id] || '',\n    leadUrl: 'https://' + data.subdomain + '.kommo.com/leads/' + lead.id,\n  };\n}\n\n// Devuelve solo las atenciones activas, de la más reciente a la más antigua.\nfunction unyxActiveLeads(leads, data) {\n  return (leads || [])\n    .filter((lead) => unyxIsActive(lead, data))\n    .map((lead) => unyxDecorate(lead, data))\n    .sort((a, b) => b.created_at - a.created_at);\n}\n\nfunction unyxClosedCount(leads, data) {\n  const excluded = (data && data.pipelinesExcluidos) || [];\n  return (leads || []).filter(\n    (lead) => lead && !lead.is_deleted && !excluded.includes(lead.pipeline_id) && lead.closed_at\n  ).length;\n}\n\n// Regla de decisión compartida por los dos workflows.\nfunction unyxResolveState(active, userId) {\n  if (active.length > 1) return { state: 'multiple_leads', activeLead: null };\n  if (active.length === 1) {\n    return {\n      state: active[0].responsible_user_id === userId ? 'same_agent' : 'other_agent',\n      activeLead: active[0],\n    };\n  }\n  return { state: 'available', activeLead: null };\n}\n\n// =============================================================\n// UNYX · Crear Lead — Nodo \"Evaluar Atención\" (workflow: crear)\n// RE-VALIDACIÓN: justo antes de crear el lead se vuelve a calcular el estado\n// con datos frescos. Devuelve además el contacto a reutilizar y el nombre\n// del lead, para que el nodo de creación no tenga que recalcular nada.\n// =============================================================\nconst data = $('Consolidar').first().json;\n\nlet leads = [];\ntry {\n  leads = $('Obtener Leads').first().json?._embedded?.leads ?? [];\n} catch (error) {\n  leads = [];\n}\n\nconst active = unyxActiveLeads(leads, data);\nconst resolved = unyxResolveState(active, data.userId);\nconst contact = data.contacts?.[0] ?? null;\n\nreturn [{\n  json: {\n    ok: true,\n    state: resolved.state,\n    phone: data.phone,\n    userId: data.userId,\n    userName: data.userName,\n    contactId: contact ? contact.id : null,\n    contactName: data.contactName,\n    contactCount: data.contactCount,\n    activeLead: resolved.activeLead,\n    leads: resolved.state === 'multiple_leads' ? active : [],\n    leadName: data.contactName ? data.contactName + ' · ' + data.phone : data.phone,\n  },\n}];"
+      },
+      "id": "72594008-473d-4217-84d8-251cde099d60",
+      "name": "Evaluar Atención",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        6736,
+        1056
+      ]
     },
     {
       "parameters": {
@@ -362,26 +325,13 @@
           }
         }
       },
-      "id": "unyx-c-responder",
+      "id": "09525153-1cb9-4884-b237-e4a3eb1bbda7",
       "name": "Responder al Widget",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
       "position": [
-        2600,
-        340
-      ]
-    },
-    {
-      "parameters": {
-        "jsCode": "// =============================================================\n// UNYX · Verificar Cliente — Reglas compartidas\n// Este archivo NO se ejecuta solo: build.js lo antepone a los nodos que\n// evalúan leads, para que la regla de \"atención activa\" viva en un solo lugar.\n//\n// REGLA: un lead está ACTIVO si no tiene closed_at.\n// Kommo marca closed_at cuando el lead se cierra (ganado o perdido) y lo\n// limpia si se reabre. Por eso no hace falta consultar pipelines ni etapas:\n// la regla funciona igual en cualquier cuenta y en cualquier pipeline.\n// =============================================================\n\nfunction unyxIsActive(lead, data) {\n  if (!lead || lead.is_deleted) return false;\n  if (data && (data.pipelinesExcluidos || []).includes(lead.pipeline_id)) return false;\n  return !lead.closed_at;\n}\n\nfunction unyxDecorate(lead, data) {\n  return {\n    id: lead.id,\n    name: lead.name || '#' + lead.id,\n    created_at: lead.created_at || 0,\n    responsible_user_id: lead.responsible_user_id || 0,\n    responsibleName: data.userMap[lead.responsible_user_id] || '',\n    leadUrl: 'https://' + data.subdomain + '.kommo.com/leads/' + lead.id,\n  };\n}\n\n// Devuelve solo las atenciones activas, de la más reciente a la más antigua.\nfunction unyxActiveLeads(leads, data) {\n  return (leads || [])\n    .filter((lead) => unyxIsActive(lead, data))\n    .map((lead) => unyxDecorate(lead, data))\n    .sort((a, b) => b.created_at - a.created_at);\n}\n\nfunction unyxClosedCount(leads, data) {\n  const excluded = (data && data.pipelinesExcluidos) || [];\n  return (leads || []).filter(\n    (lead) => lead && !lead.is_deleted && !excluded.includes(lead.pipeline_id) && lead.closed_at\n  ).length;\n}\n\n// Regla de decisión compartida por los dos workflows.\nfunction unyxResolveState(active, userId) {\n  if (active.length > 1) return { state: 'multiple_leads', activeLead: null };\n  if (active.length === 1) {\n    return {\n      state: active[0].responsible_user_id === userId ? 'same_agent' : 'other_agent',\n      activeLead: active[0],\n    };\n  }\n  return { state: 'available', activeLead: null };\n}\n\n// =============================================================\n// UNYX · Crear Lead — Nodo \"Evaluar Atención\" (workflow: crear)\n// RE-VALIDACIÓN: justo antes de crear el lead se vuelve a calcular el estado\n// con datos frescos. Devuelve además el contacto a reutilizar y el nombre\n// del lead, para que el nodo de creación no tenga que recalcular nada.\n// =============================================================\nconst data = $('Consolidar').first().json;\n\nlet leads = [];\ntry {\n  leads = $('Obtener Leads').first().json?._embedded?.leads ?? [];\n} catch (error) {\n  leads = [];\n}\n\nconst active = unyxActiveLeads(leads, data);\nconst resolved = unyxResolveState(active, data.userId);\nconst contact = data.contacts?.[0] ?? null;\n\nreturn [{\n  json: {\n    ok: true,\n    state: resolved.state,\n    phone: data.phone,\n    userId: data.userId,\n    userName: data.userName,\n    contactId: contact ? contact.id : null,\n    contactName: data.contactName,\n    contactCount: data.contactCount,\n    activeLead: resolved.activeLead,\n    leads: resolved.state === 'multiple_leads' ? active : [],\n    leadName: data.contactName ? data.contactName + ' · ' + data.phone : data.phone,\n  },\n}];"
-      },
-      "id": "unyx-c-evaluar",
-      "name": "Evaluar Atención",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        2420,
-        180
+        8304,
+        1856
       ]
     },
     {
@@ -409,13 +359,13 @@
         },
         "options": {}
       },
-      "id": "unyx-c-disponible",
+      "id": "ef9dc821-e2e3-41bc-b71d-04ef92b6b5f8",
       "name": "¿Disponible?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        2640,
-        180
+        6960,
+        1152
       ]
     },
     {
@@ -443,28 +393,20 @@
         },
         "options": {}
       },
-      "id": "unyx-c-existe-contacto",
+      "id": "616f4d5a-d48e-4caa-a395-81a25d66f6c3",
       "name": "¿Existe Contacto?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        2860,
-        80
+        7168,
+        1056
       ]
     },
     {
       "parameters": {
+        "url": "https://unyx.kommo.com/api/v4/contacts/custom_fields",
         "authentication": "genericCredentialType",
-        "genericAuthType": "httpBearerAuth",
-        "options": {
-          "response": {
-            "response": {
-              "responseFormat": "json"
-            }
-          }
-        },
-        "method": "GET",
-        "url": "https://agencialuxviajes.kommo.com/api/v4/contacts/custom_fields",
+        "genericAuthType": "httpHeaderAuth",
         "sendQuery": true,
         "queryParameters": {
           "parameters": [
@@ -473,52 +415,59 @@
               "value": "250"
             }
           ]
-        }
-      },
-      "id": "unyx-c-campos",
-      "name": "Campos Contacto",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        3080,
-        300
-      ],
-      "credentials": {
-        "httpBearerAuth": {
-          "id": "7VB4zRZNA0UkBt6D",
-          "name": "Bearer Auth account"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpBearerAuth",
+        },
         "options": {
           "response": {
             "response": {
               "responseFormat": "json"
             }
           }
-        },
+        }
+      },
+      "id": "97575149-529e-4696-9e51-e7f92745ed62",
+      "name": "Campos Contacto",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        7392,
+        1280
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "fRLOGrD5I32LciFR",
+          "name": "Unyx-Credential-widget"
+        }
+      }
+    },
+    {
+      "parameters": {
         "method": "POST",
-        "url": "https://agencialuxviajes.kommo.com/api/v4/contacts",
+        "url": "https://unyx.kommo.com/api/v4/contacts",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify([{ name: ($('Evaluar Atención').first().json.contactName || $('Evaluar Atención').first().json.phone), responsible_user_id: $('Evaluar Atención').first().json.userId, created_by: $('Evaluar Atención').first().json.userId, custom_fields_values: [{ field_id: (($json._embedded && $json._embedded.custom_fields ? $json._embedded.custom_fields : []).find((f) => String(f.code || \"\").toUpperCase() === \"PHONE\") || {}).id, values: [{ value: $('Evaluar Atención').first().json.phone, enum_code: \"WORK\" }] }] }]) }}"
+        "jsonBody": "={{ JSON.stringify([{ name: ($('Evaluar Atención').first().json.contactName || $('Evaluar Atención').first().json.phone), responsible_user_id: $('Evaluar Atención').first().json.userId, created_by: $('Evaluar Atención').first().json.userId, custom_fields_values: [{ field_id: (($json._embedded && $json._embedded.custom_fields ? $json._embedded.custom_fields : []).find((f) => String(f.code || \"\").toUpperCase() === \"PHONE\") || {}).id, values: [{ value: $('Evaluar Atención').first().json.phone, enum_code: \"WORK\" }] }] }]) }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
       },
-      "id": "unyx-c-crear-contacto",
+      "id": "667b97de-cf4c-4e5e-bb81-856aa9c8bb4e",
       "name": "Crear Contacto",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        3300,
-        300
+        7616,
+        1280
       ],
       "credentials": {
-        "httpBearerAuth": {
-          "id": "7VB4zRZNA0UkBt6D",
-          "name": "Bearer Auth account"
+        "httpHeaderAuth": {
+          "id": "fRLOGrD5I32LciFR",
+          "name": "Unyx-Credential-widget"
         }
       }
     },
@@ -526,105 +475,106 @@
       "parameters": {
         "jsCode": "// =============================================================\n// UNYX · Crear Lead — Nodo \"Extraer Contacto\"\n// Toma el id del contacto recién creado y lo mezcla con los datos del lead\n// que vienen de la evaluación, para que el nodo de creación reciba lo mismo\n// por las dos ramas (contacto existente / contacto nuevo).\n// =============================================================\nconst base = $('Evaluar Atención').first().json;\nconst created = $json?._embedded?.contacts?.[0];\n\nreturn [{\n  json: {\n    ...base,\n    contactId: created?.id ?? null,\n    contactCreated: true,\n  },\n}];"
       },
-      "id": "unyx-c-extraer",
+      "id": "80ed1f35-91e9-4e66-a21c-52ddc1ef77a7",
       "name": "Extraer Contacto",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        3520,
-        300
+        7840,
+        1280
       ]
     },
     {
       "parameters": {
+        "method": "POST",
+        "url": "https://unyx.kommo.com/api/v4/leads",
         "authentication": "genericCredentialType",
-        "genericAuthType": "httpBearerAuth",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify([{ name: $json.leadName, responsible_user_id: $json.userId, created_by: $json.userId, updated_by: $json.userId, _embedded: { contacts: [{ id: $json.contactId, is_main: true }] } }]) }}",
         "options": {
           "response": {
             "response": {
               "responseFormat": "json"
             }
           }
-        },
-        "method": "POST",
-        "url": "https://agencialuxviajes.kommo.com/api/v4/leads",
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify([{ name: $json.leadName, responsible_user_id: $json.userId, created_by: $json.userId, updated_by: $json.userId, _embedded: { contacts: [{ id: $json.contactId, is_main: true }] } }]) }}"
+        }
       },
-      "id": "unyx-c-crear-lead",
+      "id": "5c91f351-ff94-4104-a3c1-0478e382943a",
       "name": "Crear Lead",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        3740,
-        80
+        8048,
+        1056
       ],
       "credentials": {
-        "httpBearerAuth": {
-          "id": "7VB4zRZNA0UkBt6D",
-          "name": "Bearer Auth account"
+        "httpHeaderAuth": {
+          "id": "fRLOGrD5I32LciFR",
+          "name": "Unyx-Credential-widget"
         }
       }
     },
     {
       "parameters": {
-        "jsCode": "// =============================================================\n// UNYX · Crear Lead — Nodo \"Resultado\"\n// Arma la respuesta final del widget con el lead creado.\n// =============================================================\nconst created = $json?._embedded?.leads?.[0];\nconst base = $('Evaluar Atención').first().json;\n\nreturn [{\n  json: {\n    ok: true,\n    leadId: created?.id ?? null,\n    leadName: base.leadName,\n    contactId: base.contactId,\n    leadUrl: 'https://agencialuxviajes.kommo.com/leads/' + (created?.id ?? ''),\n  },\n}];"
+        "jsCode": "// =============================================================\n// UNYX · Verificar Cliente — Nodo \"Resultado\"\n// Arma la respuesta final del widget con el lead creado.\n// =============================================================\nconst created = $json?._embedded?.leads?.[0];\nconst base = $('Evaluar Atención').first().json;\n\nreturn [{\n  json: {\n    ok: true,\n    leadId: created?.id ?? null,\n    leadName: base.leadName,\n    contactId: base.contactId,\n    leadUrl: 'https://unyx.kommo.com/leads/' + (created?.id ?? ''),\n  },\n}];"
       },
-      "id": "unyx-c-resultado",
+      "id": "12fc39c5-b244-4884-9d3c-38a84ec383eb",
       "name": "Resultado",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        3960,
-        80
+        8272,
+        1056
       ]
     },
     {
       "parameters": {
         "jsCode": "// =============================================================\n// UNYX · Crear Lead — Nodo \"Bloqueado\"\n// Llegó una atención activa entre la verificación del asesor y la creación.\n// Se responde ok:false con el estado real para que el widget lo muestre.\n// =============================================================\nconst data = $json;\n\nconst messages = {\n  same_agent: 'Este cliente ya tiene una atención activa asignada a usted.',\n  other_agent: 'Este cliente está siendo atendido por otro asesor.',\n  multiple_leads: 'Este cliente tiene varias atenciones activas. Revise el historial antes de crear otra.',\n};\n\nreturn [{\n  json: {\n    ok: false,\n    state: data.state,\n    message: messages[data.state] || 'Hay una atención activa para este cliente. No se creó el lead.',\n    activeLead: data.activeLead ?? null,\n    leads: data.leads ?? [],\n    contactName: data.contactName ?? '',\n  },\n}];"
       },
-      "id": "unyx-c-bloqueado",
+      "id": "9b2249b1-bef8-49dc-82e5-f5ab01e4e32f",
       "name": "Bloqueado",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2860,
-        460
+        6960,
+        1488
       ]
     },
     {
       "parameters": {
-        "content": "## UNYX · Crear Lead — LuxViajes\nCuenta: `agencialuxviajes.kommo.com` · Webhook: `unyx-luxviajes/crear-lead`\n\n**Acceso:** el primer nodo exige `token` = variable de entorno `UNYX_SECRET_LUXVIAJES`.\nSi esa variable no está definida en n8n, el workflow deniega todo (fail-closed).\n\nRe-valida justo antes de crear para evitar duplicados por concurrencia.\n- Reutiliza el contacto existente; si no existe, lo crea con el campo PHONE.\n- El lead se asigna al asesor del contexto (`userId` = `self.system().user_id`).\n- Sin pipeline_id ni status_id: Kommo usa la primera etapa del pipeline principal.\n\n**Concurrencia:** la revalidación reduce la ventana de carrera. Si tu versión de n8n\npermite limitar la concurrencia del workflow a 1, actívalo para cerrarla del todo.\nGenerado por `unyx/n8n/build.js`: no editar este JSON a mano.",
-        "height": 380
+        "content": "## UNYX · Crear Lead — UNYX\nCuenta: `unyx.kommo.com` · Webhook: `unyx/crear-lead`\n\n**Antes de activar:** abrir `¿Autorizado?` y reemplazar `PEGAR_TOKEN_UNYX`\npor el token real del widget. Mientras quede el placeholder, todo cae en `Acceso Denegado`.\n\nLos nodos HTTP usan la credencial «Kommo UNYX Token». Si al importar\naparece sin credencial, hay que elegirla a mano (pasa cuando el id no existe en la instancia).\n\nRe-valida justo antes de crear para evitar duplicados por concurrencia.\n- Reutiliza el contacto existente; si no existe, lo crea con el campo PHONE.\n- El lead se asigna al asesor del contexto (`userId` = `self.system().user_id`).\n- Sin pipeline_id ni status_id: Kommo usa la primera etapa del pipeline principal.\n\n**Concurrencia:** la revalidación reduce la ventana de carrera. Si tu versión de n8n\npermite limitar la concurrencia del workflow a 1, actívalo para cerrarla del todo.\nGenerado por `unyx/n8n/build.js`: no editar este JSON a mano (salvo el token del nodo «¿Autorizado?»).",
+        "height": 440
       },
       "type": "n8n-nodes-base.stickyNote",
       "position": [
-        0,
-        40
+        4400,
+        640
       ],
       "typeVersion": 1,
-      "id": "nota-0-40",
+      "id": "60f979ad-1d69-4b28-9827-a5f2a10e0b18",
       "name": "Nota 0,40"
     }
   ],
+  "pinData": {},
   "connections": {
     "Webhook Widget": {
       "main": [
         [
           {
-            "node": "Acceso Autorizado",
+            "node": "¿Autorizado?",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Acceso Autorizado": {
+    "¿Autorizado?": {
       "main": [
         [
           {
-            "node": "Cuenta Correcta",
+            "node": "Teléfono Válido",
             "type": "main",
             "index": 0
           }
@@ -638,18 +588,11 @@
         ]
       ]
     },
-    "Cuenta Correcta": {
+    "Acceso Denegado": {
       "main": [
         [
           {
-            "node": "Teléfono Válido",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Cuenta No Autorizada",
+            "node": "Responder al Widget",
             "type": "main",
             "index": 0
           }
@@ -668,6 +611,17 @@
         [
           {
             "node": "Teléfono Inválido",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Teléfono Inválido": {
+      "main": [
+        [
+          {
+            "node": "Responder al Widget",
             "type": "main",
             "index": 0
           }
@@ -738,11 +692,6 @@
             "index": 0
           }
         ]
-      ]
-    },
-    "Responder al Widget": {
-      "main": [
-        []
       ]
     },
     "¿Tiene Leads?": {
@@ -875,48 +824,18 @@
           }
         ]
       ]
-    },
-    "Acceso Denegado": {
-      "main": [
-        [
-          {
-            "node": "Responder al Widget",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Cuenta No Autorizada": {
-      "main": [
-        [
-          {
-            "node": "Responder al Widget",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Teléfono Inválido": {
-      "main": [
-        [
-          {
-            "node": "Responder al Widget",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
     }
   },
-  "pinData": {},
-  "active": false,
+  "active": true,
   "settings": {
     "executionOrder": "v1",
-    "binaryMode": "separate",
-    "callerPolicy": "workflowsFromSameOwner"
+    "binaryMode": "separate"
   },
-  "id": "UnyxCrearluxviaj",
+  "versionId": "e08d5c34-e0e9-4fc1-a1f5-170d155e2003",
+  "meta": {
+    "instanceId": "e6ed2619c97de62ff0de8886ebe0c22aed325375b3b9a3c4b1a4e4dab3199a78"
+  },
+  "nodeGroups": [],
+  "id": "cg93DLCejwmGrS8W",
   "tags": []
 }

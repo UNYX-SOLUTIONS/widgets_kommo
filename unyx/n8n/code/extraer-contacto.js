@@ -4,7 +4,7 @@
 // que vienen de la evaluación, para que el nodo de creación reciba lo mismo
 // por las dos ramas (contacto existente / contacto nuevo).
 // =============================================================
-const base = $('Evaluar Atención').first().json;
+const base = $('__N_EVALUAR__').first().json;
 const created = $json?._embedded?.contacts?.[0];
 
 return [{

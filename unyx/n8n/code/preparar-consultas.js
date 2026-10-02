@@ -1,7 +1,7 @@
 // =============================================================
 // UNYX · Verificar Cliente — Nodo "Preparar Consultas"
 // Normaliza el celular ecuatoriano y genera una consulta por variante.
-// El webhook recibe el body como formulario (self.crm_post de Kommo) o JSON.
+// El payload viene del webhook (cuerpo de formulario de self.crm_post o JSON).
 // =============================================================
 const body = $json.body || $json;
 

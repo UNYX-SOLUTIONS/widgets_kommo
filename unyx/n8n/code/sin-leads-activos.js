@@ -2,7 +2,7 @@
 // UNYX · Verificar Cliente — Nodo "Sin Leads Activos" (workflow: verificar)
 // Respuesta cuando el contacto no tiene ningún lead enlazado.
 // =============================================================
-const data = $('Consolidar').first().json;
+const data = $('__N_CONSOLIDAR__').first().json;
 
 return [{
   json: {

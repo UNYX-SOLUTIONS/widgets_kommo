@@ -4,7 +4,7 @@
 // contactos cuyo teléfono no coincide exactamente con el buscado.
 // Recoge también los ids de los leads enlazados (with=leads).
 // =============================================================
-const first = $('Preparar Consultas').first().json;
+const first = $('__N_PREPARAR__').first().json;
 const target = first.local;
 
 function digitsOf(value) {

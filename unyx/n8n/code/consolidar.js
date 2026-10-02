@@ -1,14 +1,16 @@
 // =============================================================
 // UNYX · Verificar Cliente — Nodo "Consolidar"
-// Junta los datos del contacto con los nombres de los usuarios, para poder
-// evaluar cada lead. No consulta pipelines ni etapas: la regla de atención
-// activa se basa en closed_at (ver _comun.js).
+// Junta los datos del contacto con los nombres de los usuarios y con las
+// constantes del cliente de esta rama (subdominio y pipelines excluidos).
+//
+// No consulta pipelines ni etapas: la regla de atención activa se basa en
+// closed_at (ver _comun.js).
 // =============================================================
-const base = $('Unificar Contactos').first().json;
+const base = $('__N_UNIFICAR__').first().json;
 
 const userMap = {};
 try {
-  const users = $('Usuarios Kommo').first().json?._embedded?.users ?? [];
+  const users = $('__N_USUARIOS__').first().json?._embedded?.users ?? [];
   for (const user of users) userMap[user.id] = user.name;
 } catch (error) {
   // Sin permisos de administrador la lista de usuarios puede fallar:
