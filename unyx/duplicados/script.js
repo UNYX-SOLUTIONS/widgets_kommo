@@ -77,7 +77,7 @@ define(['jquery'], function () {
       var statusClass = 'unyx-status';
       return [
         '<div class="unyx-widget" id="' + instanceId + '">',
-        '  <link rel="stylesheet" href="' + esc(styleHref()) + '">',
+        '  <link rel="stylesheet" data-unyx="style" href="' + esc(styleHref()) + '">',
         '  <section class="unyx-card unyx-stack" aria-live="polite">',
         '    <div class="unyx-view unyx-stack" data-unyx-view="initial">',
         '      <div class="unyx-heading">',
@@ -250,6 +250,11 @@ define(['jquery'], function () {
         renderFailure(t('configErrorTitle'), t('configMissingUrl'));
         return;
       }
+      // Último reintento: si init() no pudo leer el asesor, se prueba otra vez
+      // justo antes de gastar una llamada al backend.
+      if (!userId || !account) {
+        refreshContext('verify');
+      }
       if (!userId) {
         renderFailure(t('configErrorTitle'), t('advisorMissing'));
         return;
@@ -318,20 +323,63 @@ define(['jquery'], function () {
         });
     }
 
+    // Lee el contexto del widget. self.system() es la fuente documentada; si no
+    // devuelve al asesor se completa con APP.data, y el subdominio cae al
+    // hostname cuando la página es *.kommo.com.
+    //
+    // Se llama desde init() y se reintenta justo antes de usar el dato:
+    // self.system() no está garantizado en todos los momentos del ciclo de
+    // vida, y render() corre antes que init().
     this.getContext = function () {
+      var widgetSelf = self;
       var system = {};
       try {
-        system = self.system() || {};
+        if (widgetSelf && typeof widgetSelf.system === 'function') {
+          system = widgetSelf.system() || {};
+        }
       } catch (error) {
         system = {};
       }
-      var id = parseInt(system.user_id || 0, 10);
+
+      var app = (typeof APP !== 'undefined' && APP && APP.data) ? APP.data : {};
+      var appUser = app.current_user || app.user || {};
+
+      function primero() {
+        for (var i = 0; i < arguments.length; i++) {
+          var valor = arguments[i];
+          if (valor !== undefined && valor !== null && String(valor).trim() !== '') return valor;
+        }
+        return '';
+      }
+
+      var id = parseInt(primero(system.user_id, app.user_id, appUser.id, 0), 10) || 0;
+      var subdominio = String(primero(system.subdomain, app.subdomain, '')).toLowerCase();
+      if (!subdominio && typeof location !== 'undefined' && /\.kommo\.com$/i.test(location.hostname)) {
+        subdominio = String(location.hostname).split('.')[0].toLowerCase();
+      }
+
       return {
-        account: String(system.subdomain || '').toLowerCase(),
-        userId: isNaN(id) ? 0 : id,
-        userName: String(system.user_name || system.name || '').trim()
+        account: subdominio,
+        userId: id,
+        userName: String(primero(system.user_name, system.name, app.user_name, appUser.name, '')).trim()
       };
     };
+
+    // Copia al estado del widget lo que getContext() haya podido resolver. No
+    // pisa con vacío un valor ya bueno, así un reintento posterior puede
+    // completar lo que faltaba.
+    function refreshContext(origen) {
+      var context = self.getContext();
+      if (context.account) account = context.account;
+      if (context.userId) userId = context.userId;
+      if (context.userName) userName = context.userName;
+
+      if (origen === 'init') {
+        // Diagnóstico: no imprime tokens ni credenciales.
+        console.log('[UNYX] Contexto detectado:', { account: account, userId: userId, userName: userName });
+      }
+      return context;
+    }
 
     this.callbacks = {
       render: function () {
@@ -341,10 +389,9 @@ define(['jquery'], function () {
         n8nUrl = configured.replace(/\/+$/, '');
         sharedToken = typeof settings.unyx_token === 'string' ? settings.unyx_token.trim() : '';
 
-        var context = self.getContext();
-        account = context.account;
-        userId = context.userId;
-        userName = context.userName;
+        // El contexto (asesor y cuenta) NO se lee aquí: render() corre antes
+        // que init() y self.system() no está garantizado todavía. Se lee en
+        // init() y, si hiciera falta, otra vez al verificar.
 
         // En las fichas de creación (leads/add, contacts/add) no hay que
         // pintarse: la documentación pide devolver false para que Kommo no
@@ -362,6 +409,18 @@ define(['jquery'], function () {
       },
 
       init: function () {
+        // Aquí self.system() ya está disponible: se lee el asesor y la cuenta.
+        refreshContext('init');
+
+        // El href se resuelve otra vez aquí: si self.params no estaba listo
+        // durante render(), el <link> del markup quedó apuntando a un sitio
+        // equivocado y sin CSS el widget se ve con los colores del tema.
+        var link = el('style');
+        if (link) {
+          var href = styleHref();
+          if (href && link.getAttribute('href') !== href) link.setAttribute('href', href);
+        }
+
         var host = root();
         if (host && boundEl !== host) {
           boundEl = host;

@@ -63,6 +63,14 @@ const js = sinComentarios(widgetScript);
 check('config: UNYX es la única configuración (la madre)', config.clientes.length === 1 && cliente !== undefined, config.clientes.map((c) => c.slug).join(', '));
 check('config: la cuenta madre es unyx.kommo.com', cliente.subdominio === 'unyx', cliente.subdominio);
 
+// Los workflows viven también en n8n: al reexportarlos cambian el id, la
+// credencial seleccionada y el token pegado. Las comprobaciones se apoyan en
+// la estructura (el webhook), no en esos valores.
+function esVerificar(workflow) {
+  const wh = workflow.nodes.find((node) => node.type === 'n8n-nodes-base.webhook');
+  return Boolean(wh) && String(wh.parameters.path).endsWith('/verificar-cliente');
+}
+
 for (const workflow of [verificar, crear]) {
   check(workflow.name + ': no usa Switch', !workflow.nodes.some((node) => node.type === 'n8n-nodes-base.switch'));
   check(workflow.name + ': no usa variables de entorno', !JSON.stringify(workflow).includes('$env'));
@@ -70,7 +78,7 @@ for (const workflow of [verificar, crear]) {
     workflow.name + ': no usa Authorization manual',
     !JSON.stringify(workflow).includes('Bearer {{') && !JSON.stringify(workflow).includes('kommoToken')
   );
-  const esperados = workflow.id === 'UnyxVerif-unyx' ? 16 : 23;
+  const esperados = esVerificar(workflow) ? 16 : 23;
   check(workflow.name + ': tamaño contenido', workflow.nodes.length === esperados, workflow.nodes.length + ' nodos');
 }
 
@@ -120,8 +128,15 @@ for (const workflow of [verificar, crear]) {
     http.length + ' nodos HTTP'
   );
   check(
-    workflow.name + ': todos los HTTP usan la credencial de la configuración',
-    http.every((node) => node.credentials[cliente.credencial.tipo].id === cliente.credencial.id)
+    workflow.name + ': todos los HTTP comparten una sola credencial',
+    (() => {
+      const ids = new Set(http.map((node) => {
+        const tipo = node.parameters.genericAuthType;
+        return node.credentials[tipo] && node.credentials[tipo].id;
+      }));
+      return ids.size === 1 && Boolean([...ids][0]);
+    })(),
+    http.length + ' nodos'
   );
   check(
     workflow.name + ': los HTTP apuntan al subdominio del cliente',
@@ -147,7 +162,7 @@ for (const workflow of [verificar, crear]) {
   check(
     workflow.name + ': el webhook es el del cliente',
     workflow.nodes.find((node) => node.type === 'n8n-nodes-base.webhook').parameters.path ===
-      'unyx/' + (workflow.id === 'UnyxVerif-unyx' ? 'verificar-cliente' : 'crear-lead')
+      'unyx/' + (esVerificar(workflow) ? 'verificar-cliente' : 'crear-lead')
   );
   check(
     workflow.name + ': no consulta pipelines ni etapas',
@@ -175,16 +190,20 @@ const autorizadoExpr = autorizadoNode.parameters.conditions.conditions[0].leftVa
   .replace(/^=/, '').replace(/^\{\{/, '').replace(/\}\}$/, '').trim();
 const evaluarAutorizado = new Function('$json', 'return (' + autorizadoExpr + ');');
 
-const cuerpoOk = { body: { token: cliente.tokenWidget, account: cliente.subdominio, phone: '991234567' } };
+// El token esperado se lee del propio workflow: es el que el usuario pegó en
+// n8n. Así la prueba valida la lógica y no un valor concreto.
+const tokenEsperado = (autorizadoExpr.match(/===\s*"([^"]*)"/) || [])[1];
+check('autorizado: el workflow tiene un token configurado', Boolean(tokenEsperado), tokenEsperado ? tokenEsperado.slice(0, 4) + '…' : '(vacío)');
+
+const cuerpoOk = { body: { token: tokenEsperado, account: cliente.subdominio, phone: '991234567' } };
 check('autorizado: deja pasar el token y la cuenta correctos', evaluarAutorizado(cuerpoOk) === true);
 check('autorizado: rechaza un token distinto', evaluarAutorizado({ body: { token: 'otro', account: 'unyx' } }) === false);
-check('autorizado: rechaza la cuenta equivocada', evaluarAutorizado({ body: { token: cliente.tokenWidget, account: 'meditecec' } }) === false);
+check('autorizado: rechaza la cuenta equivocada', evaluarAutorizado({ body: { token: tokenEsperado, account: 'meditecec' } }) === false);
 check('autorizado: rechaza si no hay token', evaluarAutorizado({ body: { account: 'unyx' } }) === false);
 check('autorizado: rechaza si no hay cuerpo', evaluarAutorizado({}) === false);
-check('autorizado: acepta mayúsculas y espacios en la cuenta', evaluarAutorizado({ body: { token: cliente.tokenWidget, account: ' UNYX ' } }) === true);
-check('autorizado: el token esperado es un placeholder, no un secreto', cliente.tokenWidget.startsWith('PEGAR_'), cliente.tokenWidget);
+check('autorizado: acepta mayúsculas y espacios en la cuenta', evaluarAutorizado({ body: { token: tokenEsperado, account: ' UNYX ' } }) === true);
 check('autorizado: responde ok:false al denegar', run(snippetOf(crear, 'Acceso Denegado'), { json: {} })[0].json.ok === false);
-check('autorizado: el mensaje de denegación no revela el token', !/PEGAR_TOKEN/.test(run(snippetOf(crear, 'Acceso Denegado'), { json: {} })[0].json.message));
+check('autorizado: el mensaje de denegación no revela el token', !run(snippetOf(crear, 'Acceso Denegado'), { json: {} })[0].json.message.includes(String(tokenEsperado)));
 
 // =============================================================
 // 4. Lógica de los nodos
@@ -387,12 +406,50 @@ check('script: no inyecta el CSS en document.head', !js.includes('document.head'
 check('script: no toca document.body ni documentElement', !/document\.(body|documentElement)/.test(js));
 check('script: no usa window', !/\bwindow\./.test(js));
 check('script: no usa selectores globales', !/document\.querySelector\(/.test(js));
-check('script: la hoja de estilos va dentro del markup del widget', /<link rel="stylesheet" href="' \+ esc\(styleHref\(\)\)/.test(widgetScript));
+check('script: la hoja de estilos va dentro del markup del widget', /<link rel="stylesheet" data-unyx="style" href="' \+ esc\(styleHref\(\)\)/.test(widgetScript));
 check('script: encapsula cada instancia con un id único', /var instanceId = 'unyx-root-' \+ Math\.random\(\)/.test(widgetScript) && /getElementById\(instanceId\)/.test(widgetScript));
 check('script: devuelve false en las fichas de creación', /current_card\.id === 0\)\s*\{\s*return false;/.test(widgetScript));
 check('script: usa el ciclo de vida documentado y devuelve true', /render: function \(\) \{[\s\S]*?return true;\s*\}/.test(widgetScript) && /init: function \(\) \{[\s\S]*?return true;\s*\}/.test(widgetScript));
 check('script: no usa self.on (no está en la documentación)', !/self\.on\(/.test(js));
-check('script: no imprime tokens en consola', !/console\.log/.test(widgetScript));
+
+// --- Contexto del asesor: se lee en init(), no en render() ---
+const tramoRender = js.slice(js.indexOf('render: function'), js.indexOf('init: function'));
+const tramoInit = js.slice(js.indexOf('init: function'), js.indexOf('bind_actions: function'));
+check('contexto: render() no lee el contexto', tramoRender.length > 0 && !tramoRender.includes('getContext()'), tramoRender.length + ' caracteres');
+check('contexto: init() lee el contexto', tramoInit.includes("refreshContext('init')"));
+check('contexto: se reintenta antes de verificar', js.includes("refreshContext('verify')"));
+check(
+  'contexto: usa self.system() como fuente documentada',
+  /typeof widgetSelf\.system === 'function'/.test(js) && /widgetSelf\.system\(\)/.test(js)
+);
+check('contexto: tiene respaldo en APP.data', /APP && APP\.data/.test(js) && /app\.user_id/.test(js));
+check('contexto: el subdominio cae al hostname de Kommo', /\.kommo\\?\.com\$\/i\.test\(location\.hostname\)/.test(js));
+check('contexto: no pisa con vacío un valor ya resuelto', /if \(context\.account\) account = context\.account;/.test(js) && /if \(context\.userId\) userId = context\.userId;/.test(js));
+check('contexto: registra el contexto sin exponer secretos', /\[UNYX\] Contexto detectado/.test(js) && !/console\.log\([^)]*(token|sharedToken|secreto)/i.test(js));
+check('contexto: no hay console.log fuera del diagnóstico', (js.match(/console\.log/g) || []).length === 1, (js.match(/console\.log/g) || []).length + ' llamadas');
+
+// --- Hoja de estilos: se resuelve también en init() ---
+check('css: el <link> lleva data-unyx para poder re-resolverlo', /<link rel="stylesheet" data-unyx="style"/.test(widgetScript));
+check('css: init() vuelve a resolver el href', /var link = el\('style'\);/.test(js) && /link\.setAttribute\('href', href\)/.test(js));
+
+// --- Tema claro forzado ---
+check('tema: el widget fija color-scheme light', (css.match(/color-scheme: light/g) || []).length >= 4, (css.match(/color-scheme: light/g) || []).length + ' declaraciones');
+check('tema: el fondo del widget es explícito', /\.unyx-widget \{[\s\S]*?background: #ffffff !important;/.test(css));
+check('tema: el color de texto del widget es explícito', /\.unyx-widget \{[\s\S]*?color: #2E3640 !important;/.test(css));
+for (const [nombre, patron] of [
+  ['label', /\.unyx-widget \.unyx-label \{[\s\S]*?color: #2E3640 !important;/],
+  ['hint', /\.unyx-widget \.unyx-hint \{[\s\S]*?color: #7a8591 !important;/],
+  ['input', /\.unyx-widget \.unyx-phone input \{[\s\S]*?background: #ffffff !important;[\s\S]*?color: #2E3640 !important;/],
+  ['prefijo', /\.unyx-widget \.unyx-prefix \{[\s\S]*?background: #f2f4f7 !important;[\s\S]*?color: #2E3640 !important;/],
+  ['botón', /\.unyx-widget \.unyx-button \{[\s\S]*?background: #1a3bbd !important;[\s\S]*?color: #ffffff !important;/],
+  ['botón secundario', /\.unyx-widget \.unyx-button\.unyx-secondary \{[\s\S]*?background: #f2f4f7 !important;[\s\S]*?color: #2E3640 !important;/],
+  ['error', /\.unyx-widget \.unyx-error-text \{[\s\S]*?color: #d92d20 !important;/],
+  ['link', /\.unyx-widget \.unyx-link,[\s\S]*?\.unyx-link:visited \{[\s\S]*?color: #1a3bbd !important;/]
+]) {
+  check('tema: color explícito en ' + nombre, patron.test(css));
+}
+check('tema: las variantes de estado van después de la base', css.indexOf('.unyx-status--success') > css.indexOf('.unyx-widget .unyx-status {'));
+
 
 // =============================================================
 // 6. Coherencia widget <-> workflows

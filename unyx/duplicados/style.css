@@ -1,30 +1,37 @@
 /* =============================================================
    UNYX · Verificar Cliente — estilos del widget
    -------------------------------------------------------------
-   REGLA: todo selector empieza por .unyx-widget. Nada de `body`,
-   `html`, `:root` ni `*` sueltos, y ninguna clase sin prefijo.
+   DOS REGLAS QUE NO SE PUEDEN ROMPER:
 
-   Por qué: el script del widget se ejecuta en la MISMA página que
-   Kommo, y este archivo se carga en esa página. Un `body{margin:0}`
-   o un `.button{...}` sin prefijar se aplican a toda la interfaz de
-   Kommo y la dejan mal renderizada. Además las clases son
-   `unyx-*` para no chocar con las de Kommo.
+   1. ENCAPSULADO: todo selector empieza por `.unyx-widget`. Nada de
+      `body`, `html`, `:root` ni `*` sueltos, y ninguna clase sin
+      prefijo. El script corre en la MISMA página que Kommo: un
+      `body{margin:0}` se aplica a toda la interfaz y la rompe.
+
+   2. TEMA: el widget se ve SIEMPRE en claro, con o sin tema oscuro en
+      Kommo. Para eso los colores son literales (no se heredan de
+      Kommo), `color-scheme: light` evita que el navegador pinte los
+      inputs en oscuro, y los colores críticos llevan `!important`
+      porque las reglas del tema de Kommo pueden tener más
+      especificidad que las nuestras.
    ============================================================= */
 
 .unyx-widget {
-  --unyx-fg: #1e293b;
-  --unyx-muted: #64748b;
-  --unyx-soft: #475569;
-  --unyx-border: #e2e8f0;
-  --unyx-border-strong: #cbd5e1;
-  --unyx-bg: #f8fafc;
-  --unyx-brand: #1e40af;
-  --unyx-brand-dark: #1e3a8a;
-
   width: 100%;
   max-width: 380px;
   margin: 0 auto;
-  color: var(--unyx-fg);
+  padding: 0;
+
+  /* Un widget embebido en una app con tema oscuro debe fijar su propio
+     esquema, o el navegador pinta controles nativos en oscuro. */
+  color-scheme: light;
+
+  background: #ffffff !important;
+  color: #2E3640 !important;
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .08);
+  overflow: hidden;
+
   font-family: Inter, Arial, sans-serif;
   font-size: 12px;
   line-height: 1.5;
@@ -34,15 +41,14 @@
 
 .unyx-widget * {
   box-sizing: border-box;
+  color-scheme: light;
 }
 
 .unyx-widget .unyx-card {
   width: 100%;
   padding: 16px;
-  background: #fff;
-  border: 1px solid var(--unyx-border);
-  border-radius: 12px;
-  box-shadow: 0 1px 3px #0f172a0d;
+  background: #ffffff !important;
+  color: #2E3640 !important;
 }
 
 .unyx-widget .unyx-stack {
@@ -57,40 +63,43 @@
 .unyx-widget .unyx-heading {
   display: grid;
   gap: 4px;
+  color: #2E3640 !important;
 }
 
 .unyx-widget .unyx-label {
   font-size: 12px;
   font-weight: 650;
+  color: #2E3640 !important;
 }
 
 .unyx-widget .unyx-hint {
   margin: 0;
-  color: var(--unyx-muted);
   font-size: 11px;
   line-height: 1.5;
+  color: #7a8591 !important;
 }
 
 .unyx-widget .unyx-phone {
   display: flex;
   overflow: hidden;
-  border: 1px solid var(--unyx-border-strong);
+  border: 1px solid #d5dae0;
   border-radius: 10px;
+  background: #ffffff !important;
   transition: border-color .15s, box-shadow .15s;
 }
 
 .unyx-widget .unyx-phone:focus-within {
-  border-color: #1d4ed8;
-  box-shadow: 0 0 0 3px #1d4ed81a;
+  border-color: #1a3bbd;
+  box-shadow: 0 0 0 3px #1a3bbd1a;
 }
 
 .unyx-widget .unyx-prefix {
   display: flex;
   align-items: center;
   padding: 0 11px;
-  border-right: 1px solid var(--unyx-border);
-  background: var(--unyx-bg);
-  color: var(--unyx-soft);
+  border-right: 1px solid #d5dae0;
+  background: #f2f4f7 !important;
+  color: #2E3640 !important;
   font: 600 12px ui-monospace, monospace;
 }
 
@@ -100,10 +109,18 @@
   padding: 11px 12px;
   border: 0;
   outline: 0;
-  background: transparent;
-  color: var(--unyx-fg);
+  /* Explícitos: sin esto, en modo oscuro del sistema el navegador pinta el
+     campo con fondo y texto oscuros y el número se vuelve ilegible. */
+  background: #ffffff !important;
+  color: #2E3640 !important;
+  color-scheme: light;
   font: 500 12px ui-monospace, monospace;
   letter-spacing: .04em;
+}
+
+.unyx-widget .unyx-phone input::placeholder {
+  color: #9aa3ad !important;
+  opacity: 1;
 }
 
 .unyx-widget .unyx-button {
@@ -112,8 +129,9 @@
   padding: 9px 12px;
   border: 0;
   border-radius: 9px;
-  background: var(--unyx-brand);
-  color: #fff;
+  background: #1a3bbd !important;
+  color: #ffffff !important;
+  color-scheme: light;
   font-family: inherit;
   font-size: 12px;
   font-weight: 650;
@@ -121,7 +139,7 @@
 }
 
 .unyx-widget .unyx-button:hover {
-  background: var(--unyx-brand-dark);
+  background: #16309b !important;
 }
 
 .unyx-widget .unyx-button:disabled {
@@ -129,74 +147,81 @@
   cursor: wait;
 }
 
-.unyx-widget .unyx-secondary {
-  background: transparent;
-  color: var(--unyx-muted);
+.unyx-widget .unyx-button.unyx-secondary {
+  background: #f2f4f7 !important;
+  color: #2E3640 !important;
+  border: 1px solid #d5dae0;
 }
 
-.unyx-widget .unyx-secondary:hover {
-  background: var(--unyx-bg);
-  color: var(--unyx-fg);
+.unyx-widget .unyx-button.unyx-secondary:hover {
+  background: #e8ebf0 !important;
 }
 
 .unyx-widget .unyx-status {
   padding: 12px;
-  border: 1px solid var(--unyx-border-strong);
-  border-radius: 10px;
-  background: var(--unyx-bg);
+  border: 1px solid #d5dae0;
+  border-radius: 8px;
+  background: #f8f9fa !important;
+  color: #2E3640 !important;
 }
 
 .unyx-widget .unyx-status h2 {
   margin: 0 0 4px;
   font-size: 12px;
+  color: #2E3640 !important;
 }
 
 .unyx-widget .unyx-status p {
   margin: 0;
-  color: var(--unyx-soft);
   font-size: 11px;
   line-height: 1.5;
+  color: #2E3640 !important;
 }
 
+/* Variantes semánticas: van DESPUÉS de la base para que su fondo gane. */
 .unyx-widget .unyx-status--success {
-  background: #ecfdf5;
+  background: #ecfdf5 !important;
   border-color: #a7f3d0;
 }
 
 .unyx-widget .unyx-status--warning {
-  background: #fffbeb;
+  background: #fffbeb !important;
   border-color: #fde68a;
 }
 
 .unyx-widget .unyx-status--error {
-  background: #fff7ed;
+  background: #fff7ed !important;
   border-color: #fed7aa;
 }
 
 .unyx-widget .unyx-status--blocked {
-  background: #fff1f2;
+  background: #fff1f2 !important;
   border-color: #fecdd3;
 }
 
 .unyx-widget .unyx-status--info {
-  background: #eff6ff;
+  background: #eff6ff !important;
   border-color: #bfdbfe;
 }
 
 .unyx-widget .unyx-status--info h2 {
-  color: var(--unyx-brand);
+  color: #1a3bbd !important;
 }
 
 .unyx-widget .unyx-details {
   margin-top: 8px;
-  color: #334155;
   font-size: 11px;
   line-height: 1.6;
+  color: #2E3640 !important;
+}
+
+.unyx-widget .unyx-details b {
+  color: #2E3640 !important;
 }
 
 .unyx-widget .unyx-small {
   font-size: 10px;
-  color: var(--unyx-muted);
+  color: #7a8591 !important;
 }
 
 .unyx-widget .unyx-actions {
@@ -206,19 +231,22 @@
 
 .unyx-widget .unyx-error-text {
   margin: 0;
-  color: #b91c1c;
   font-size: 11px;
   line-height: 1.5;
+  /* El rojo es más oscuro que el del diseño (#fe6e6e) para que se lea
+     sobre blanco: aquel no llegaba al contraste mínimo. */
+  color: #d92d20 !important;
 }
 
-.unyx-widget .unyx-link {
-  color: #1d4ed8;
+.unyx-widget .unyx-link,
+.unyx-widget .unyx-link:visited {
+  color: #1a3bbd !important;
   font-weight: 600;
-  text-decoration: none;
+  text-decoration: underline;
 }
 
 .unyx-widget .unyx-link:hover {
-  text-decoration: underline;
+  color: #16309b !important;
 }
 
 .unyx-widget .unyx-spinner {
@@ -228,12 +256,12 @@
   margin-right: 7px;
   vertical-align: -2px;
   border: 2px solid #ffffff66;
-  border-top-color: #fff;
+  border-top-color: #ffffff;
   border-radius: 50%;
   animation: unyx-spin .7s linear infinite;
 }
 
-/* Nombre de keyframes con prefijo: los nombres de @keyframes son globales. */
+/* Los nombres de @keyframes son globales: van con prefijo. */
 @keyframes unyx-spin {
   to { transform: rotate(360deg); }
 }
