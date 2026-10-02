@@ -1,0 +1,634 @@
+{
+  "name": "Leads Duplicados",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "75672fb8-c8a0-4014-9d7f-e6ada732acf4",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -304,
+        0
+      ],
+      "id": "87fd44a7-c5ba-47dd-ae1e-e742aa90d070",
+      "name": "Webhook",
+      "webhookId": "75672fb8-c8a0-4014-9d7f-e6ada732acf4"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\n  \"success\": true,\n  \"message\": \"Lead creado correctamente en Kommo\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        3344,
+        0
+      ],
+      "id": "5e203b98-4d09-43a0-a5a4-0616bff9b164",
+      "name": "Respond to Webhook"
+    },
+    {
+      "parameters": {
+        "url": "=https://agencialuxviajes.kommo.com/api/v4/contacts?query={{ $json.phone }}&with=leads",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        720,
+        0
+      ],
+      "id": "35089716-99fe-4064-838e-bb9383b68b03",
+      "name": "Obtención de los contactos",
+      "alwaysOutputData": false,
+      "executeOnce": false,
+      "retryOnFail": false,
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "7VB4zRZNA0UkBt6D",
+          "name": "Bearer Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "66b1e885-7c10-4f3e-b095-a39ce7587992",
+              "leftValue": "={{ $json.leads.length }}",
+              "rightValue": 1,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": "=",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1104,
+        0
+      ],
+      "id": "13a11f92-f709-4e4d-8f5f-2cbffe049f8a",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://agencialuxviajes.kommo.com/api/v4/leads/notes",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "=[\n  {\n    \"entity_id\": {{ $('Obtener ID').item.json.id }},\n    \"note_type\": \"common\",\n    \"params\": {\n      \"text\": {{ JSON.stringify($json.note_text) }}\n    }\n  }\n]",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        3136,
+        0
+      ],
+      "id": "eb861c5a-8dc1-4252-97ce-4ae6ce809fdb",
+      "name": "Crear Nota",
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "7VB4zRZNA0UkBt6D",
+          "name": "Bearer Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "1cd3145a-9766-4dbd-8167-292512e56859",
+              "name": "id",
+              "value": "={{ $json.body['leads[add][0][id]'] }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -144,
+        0
+      ],
+      "id": "a07bc943-dc50-4020-b12d-972c0ad90145",
+      "name": "Obtener ID",
+      "executeOnce": false
+    },
+    {
+      "parameters": {
+        "url": "=https://agencialuxviajes.kommo.com/api/v4/leads/{{ $json.id }}?with=contacts",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        80,
+        0
+      ],
+      "id": "befd21bf-ebdf-436c-b554-5875e0b8f3a8",
+      "name": "Obtención de la data del lead",
+      "alwaysOutputData": false,
+      "executeOnce": false,
+      "retryOnFail": false,
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "7VB4zRZNA0UkBt6D",
+          "name": "Bearer Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "=https://agencialuxviajes.kommo.com/api/v4/contacts/{{ $json.body._embedded.contacts[0].id }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        288,
+        0
+      ],
+      "id": "9b38664a-76e4-4325-b006-9af0ab4a0351",
+      "name": "Obtencion de cliente",
+      "executeOnce": false,
+      "alwaysOutputData": false,
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "7VB4zRZNA0UkBt6D",
+          "name": "Bearer Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "269c2199-3593-4853-8db2-56b2e85dae8b",
+              "name": "phone",
+              "value": "={{  \n$json.body.custom_fields_values\n.find(field => field.field_code === 'PHONE')\n?.values?.[0]?.value\n?.replace(/^0+/, '') || '' \n}}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        496,
+        0
+      ],
+      "id": "7e8688ac-bb7a-44fa-8347-88959a206b86",
+      "name": "Edit Fields"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "f571f3d0-abe6-4513-ac50-c5baf57abf90",
+              "name": "leads",
+              "value": "={{ \n$json.body._embedded.contacts\n.flatMap(contact => contact._embedded?.leads || [])\n.map(lead => lead.id)\n}}",
+              "type": "array"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        928,
+        0
+      ],
+      "id": "dc38aab4-2e0a-4392-a92e-cba33f36b910",
+      "name": "Edit Fields1"
+    },
+    {
+      "parameters": {
+        "jsCode": "return $input.first().json.leads.map(leadId => ({\n  json: {\n    lead_id: leadId\n  }\n}));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1360,
+        0
+      ],
+      "id": "ea753947-980d-4f4a-ad75-db68ca238831",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "url": "=https://agencialuxviajes.kommo.com/api/v4/leads/{{ $json.lead_id }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1616,
+        0
+      ],
+      "id": "9db38518-1b0f-44fa-b638-79f8e3b736c7",
+      "name": "Obtención del lead",
+      "alwaysOutputData": false,
+      "executeOnce": false,
+      "retryOnFail": false,
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "7VB4zRZNA0UkBt6D",
+          "name": "Bearer Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "//Excluimos algunos pipelines\nconst excluded = [13416240, 13629516, 13629520, 13680940];\n\nif (excluded.includes($json.body.pipeline_id)) {\n  return null;\n}\n\nreturn {\n  json: {\n    lead_id: $json.body.id,\n    lead_name: $json.body.name,\n    responsible_user_id: $json.body.responsible_user_id,\n    pipeline_id: $json.body.pipeline_id,\n    status_id: $json.body.status_id\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1840,
+        0
+      ],
+      "id": "0a9155bd-9cf0-472e-b17f-9e04a551515c",
+      "name": "Code in JavaScript1"
+    },
+    {
+      "parameters": {
+        "url": "=https://agencialuxviajes.kommo.com/api/v4/users/{{ $json.responsible_user_id }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        2048,
+        0
+      ],
+      "id": "ec6ba886-844a-4127-bd41-99840b250498",
+      "name": "Obtención del usuario responsable",
+      "alwaysOutputData": false,
+      "executeOnce": false,
+      "retryOnFail": false,
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "7VB4zRZNA0UkBt6D",
+          "name": "Bearer Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "=https://agencialuxviajes.kommo.com/api/v4/leads/pipelines/{{ $('Code in JavaScript1').item.json.pipeline_id }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        2288,
+        0
+      ],
+      "id": "cbe033e1-8397-4d9c-af17-5182a6652dcf",
+      "name": "Obtención del pipeline y etapa",
+      "alwaysOutputData": false,
+      "executeOnce": false,
+      "retryOnFail": false,
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "7VB4zRZNA0UkBt6D",
+          "name": "Bearer Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const status = $json.body._embedded.statuses.find(\n  s => s.id ===  $('Code in JavaScript1').item.json.status_id\n);\n\nreturn {\n  json: {\n    pipeline_name: $json.body.name,\n    stage_name: status?.name || ''\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2496,
+        0
+      ],
+      "id": "3b03b593-d6b7-447a-b14d-f89f578f5000",
+      "name": "Code in JavaScript2"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "return {\n  json: {\n    lead_id: $('Code in JavaScript1').item.json.lead_id,\n    lead_name: $('Code in JavaScript1').item.json.lead_name,\n    responsible_user: $('Obtención del usuario responsable').item.json.body.name,\n    pipeline: $json.pipeline_name,\n    status: $json.stage_name\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2720,
+        0
+      ],
+      "id": "0f6c1c21-de2e-428e-9b3a-54b7ddd3b645",
+      "name": "Code in JavaScript3"
+    },
+    {
+      "parameters": {
+        "jsCode": "let text = '⚠️ Precaución: Existen Leads para este contacto\\n\\n';\n\nfor (const item of $input.all()) {\n  text +=\n`• Lead: ${item.json.lead_name}\nPipeline: ${item.json.pipeline}\nEtapa: ${item.json.status}\nResponsable: ${item.json.responsible_user}\n\n`;\n}\n\nreturn [{\n  json: {\n    note_text: text\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2928,
+        0
+      ],
+      "id": "e32f5ec4-73b0-4066-bf06-4feea89ade9d",
+      "name": "Code in JavaScript4"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Obtención de los contactos": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Crear Nota": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Obtener ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Obtener ID": {
+      "main": [
+        [
+          {
+            "node": "Obtención de la data del lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Obtención de la data del lead": {
+      "main": [
+        [
+          {
+            "node": "Obtencion de cliente",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Obtencion de cliente": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields": {
+      "main": [
+        [
+          {
+            "node": "Obtención de los contactos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields1": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Obtención del lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Obtención del lead": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript1": {
+      "main": [
+        [
+          {
+            "node": "Obtención del usuario responsable",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Obtención del usuario responsable": {
+      "main": [
+        [
+          {
+            "node": "Obtención del pipeline y etapa",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Obtención del pipeline y etapa": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript2": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript3": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript4": {
+      "main": [
+        [
+          {
+            "node": "Crear Nota",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "a211b03e-8956-40a7-b9c1-8862695db53d",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "cf96646efb09d0b5fb52c1a84a968b4224e10439e18553d197f3ebdf196b36a8"
+  },
+  "id": "wy09YoIKr3rqw5HC",
+  "tags": []
+}

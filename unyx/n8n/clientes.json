@@ -1,0 +1,58 @@
+{
+  "clientes": [
+    {
+      "slug": "meditec",
+      "nombre": "Meditec",
+      "subdominio": "meditecec",
+      "secretoEnv": "UNYX_SECRET_MEDITEC",
+      "credencial": {
+        "id": "rsBfubSe7f022RsT",
+        "name": "Kommo Meditec Token",
+        "tipo": "httpHeaderAuth"
+      },
+      "pipelinesExcluidos": []
+    },
+    {
+      "slug": "luxviajes",
+      "nombre": "LuxViajes",
+      "subdominio": "agencialuxviajes",
+      "secretoEnv": "UNYX_SECRET_LUXVIAJES",
+      "credencial": {
+        "id": "7VB4zRZNA0UkBt6D",
+        "name": "Bearer Auth account",
+        "tipo": "httpBearerAuth"
+      },
+      "pipelinesExcluidos": [13416240, 13629516, 13629520, 13680940]
+    }
+  ],
+  "_ayuda": [
+    "Un cliente = una integracion privada en SU cuenta = un par de workflows con SU credencial.",
+    "Cada entrada genera: unyx-<slug>-verificar-cliente.json y unyx-<slug>-crear-lead.json",
+    "",
+    "Campos:",
+    "  slug                identificador corto y unico; forma parte de la URL del webhook (unyx-<slug>)",
+    "  nombre              nombre visible del cliente en n8n",
+    "  subdominio          SUBDOMINIO.kommo.com, sin https y sin .kommo.com",
+    "  secretoEnv          nombre de la variable de entorno de n8n que contiene el token compartido del widget.",
+    "                      El VALOR no se guarda aqui ni en el JSON generado: solo el nombre de la variable.",
+    "  credencial.id       id de la credencial en n8n (verla en la URL al abrir la credencial)",
+    "  credencial.name     nombre visible de la credencial",
+    "  credencial.tipo     httpHeaderAuth (cabecera 'Authorization: Bearer <token>') o httpBearerAuth (solo el token)",
+    "                      Debe coincidir con el tipo real en n8n o el nodo HTTP queda sin credencial.",
+    "  pipelinesExcluidos  pipelines que NO cuentan como atencion activa (por defecto ninguno)",
+    "",
+    "Pasos para agregar un cliente:",
+    "  1. Crear la integracion privada en su Kommo (Settings -> Integrations -> Crear integracion).",
+    "  2. Guardar su token de larga duracion como credencial nueva en n8n.",
+    "  3. Definir en el entorno de n8n una variable con el token compartido del widget (ej. UNYX_SECRET_ALTOSA).",
+    "  4. Anotar aqui slug, subdominio, secretoEnv, credencial y pipelinesExcluidos.",
+    "  5. node unyx/n8n/build.js  y luego importar los dos JSON en n8n.",
+    "No se inventan subdominios ni credenciales: si falta el id, el cliente se salta con un aviso."
+  ],
+  "_aviso_luxviajes": [
+    "LuxViajes se agrego con los datos encontrados en 'Leads Duplicados.json' (su workflow existente).",
+    "Antes de activarlo: confirmar que la credencial 7VB4zRZNA0UkBt6D pertenece a agencialuxviajes.",
+    "pipelinesExcluidos replica la lista de exclusion de ese mismo workflow; revisar si el widget",
+    "debe compartir ese criterio o ser mas estricto que el aviso por nota."
+  ]
+}
