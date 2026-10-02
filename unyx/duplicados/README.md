@@ -18,12 +18,59 @@ de workflows generales**: el cliente se decide por el token.
 |---|---|
 | Interfaz del card y los 8 estados | **Hecho** (`script.js`, `style.css`, `i18n/es.json`) |
 | Llamadas del widget a n8n | **Hecho** (vía `self.crm_post`, sin CORS) |
-| Workflows de n8n | **Hechos**: un par general para todos los clientes |
-| Reglas de negocio probadas sin n8n | **Hecho** (88 comprobaciones) |
-| Prueba contra Kommo real | **Pendiente** — requiere importar los workflows y subir el ZIP |
-| Logos oficiales | **Hecho** a partir de `images/unyx.png`; falta un isotipo cuadrado para `logo_min`/`logo_small` |
+| Workflows de n8n | **Hechos**: Switch por cliente, una rama por cuenta |
+| Reglas de negocio probadas sin n8n | **Hecho** (102 comprobaciones) |
+| Bug de carga en Kommo | **Corregido** (ver abajo); pendiente de confirmar en la cuenta real |
+| Logos oficiales | **Hecho** desde `images/unyx.png`; falta un isotipo cuadrado para `logo_min`/`logo_small` |
 
-Nada de esto está verificado todavía contra una cuenta real de Kommo.
+## El bug de carga en Kommo: causa y arreglo
+
+**Síntoma**: al renderizarse el widget, la interfaz de Kommo (menú lateral, área
+de leads) quedaba congelada o mal renderizada hasta recargar con F5.
+
+**Causa**: el `style.css` venía del prototipo, escrito para una página propia, y
+empezaba así:
+
+```css
+:root { font-family: Inter, Arial, sans-serif; color: #1e293b; }
+* { box-sizing: border-box; }
+body { margin: 0; padding: 12px; background: #f1f3f5; }
+```
+
+El script de un widget de Kommo **se ejecuta en la misma página que Kommo** (no
+dentro de un iframe), así que ese CSS se aplicaba a toda la aplicación: `body`
+con `padding` y fondo, `*` cambiando el `box-sizing` de todo, y `:root`
+redefiniendo la tipografía global. Además había clases sin prefijo (`.button`,
+`.link`, `.status`, `.heading`, `.small`) que chocan con las de Kommo, y la hoja
+se inyectaba en `document.head`, de modo que seguía aplicándose incluso al salir
+del widget. Eso explica también que fuera intermitente: el daño empezaba en el
+momento exacto en que el widget se renderizaba.
+
+**Arreglo aplicado**:
+
+1. `style.css` reescrito: **todo** selector arranca por `.unyx-widget`, y las
+   clases internas llevan prefijo (`unyx-card`, `unyx-button`, `unyx-status`…).
+   Sin `body`, `html`, `:root` ni `*` sueltos. Las variables CSS viven en
+   `.unyx-widget`, no en `:root`. Los `@keyframes` se renombraron a `unyx-spin`
+   (los nombres de keyframes son globales).
+2. La hoja se inserta **dentro del markup del widget** (patrón del ejemplo
+   oficial), no en `document.head`: vive y muere con el widget.
+3. `script.js` dejó de usar selectores globales: cada instancia se identifica
+   con un id único y todos los elementos se buscan desde su raíz
+   (`data-unyx="..."`). Ya no usa `document.head`, `document.body`,
+   `document.documentElement` ni `window`.
+4. `render` ahora devuelve **`false`** en las fichas de creación
+   (`APP.data.current_card.id == 0`), como pide la documentación, para no
+   inicializarse donde no corresponde.
+
+Hay comprobaciones automáticas que fallan si alguien vuelve a meter un selector
+global, una clase sin prefijo o un acceso a `document.head`/`body`.
+
+**Sin confirmar**: el arreglo está verificado por análisis y por pruebas
+estáticas, pero **no probado en la cuenta real**. Faltan dos cosas por
+descartar si el síntoma persistiera: que Kommo no reciba bien el `<link>` dentro
+del panel del widget, y que alguna extensión del navegador interfiera.
+
 
 ## Arquitectura
 
@@ -32,7 +79,7 @@ Widget (dentro de Kommo)        n8n (un par general)            Kommo API v4
   script.js
      │  self.crm_post(form)
      └──────────────────────►  /webhook/unyx/verificar-cliente
-                                  │ Resolver Cliente (switch por token)
+                                  │ Switch Cliente (una rama por cuenta)
                                   │ ¿Autorizado?
                                   │ contacts?query=…&with=leads
                                   │ leads?filter[id][]=…
@@ -46,7 +93,7 @@ Widget (dentro de Kommo)        n8n (un par general)            Kommo API v4
                                   │ leads (asigna al asesor)
 ```
 
-- El token de Kommo de cada cliente vive **solo en el entorno de n8n**. El
+- El token de Kommo de cada cliente vive **solo en una credencial de n8n**. El
   widget no contiene credenciales ni llama a la API de Kommo.
 - Se usa `self.crm_post` (proxy de Kommo) en vez de `fetch`: no hay CORS.
 - El asesor actual se toma de `self.system().user_id`; n8n lo usa como
@@ -62,7 +109,7 @@ Dos ajustes, ambos obligatorios al instalar:
 | Ajuste | Valor |
 |---|---|
 | *URL de los webhooks de n8n* | `https://flow.unyxsolutions.com/webhook/unyx` — **igual para todos los clientes** |
-| *Token de acceso de esta cuenta* | el token que definiste en n8n como `UNYX_SECRET_<CLIENTE>` |
+| *Token de acceso de esta cuenta* | el token que pegaste en `Switch Cliente` para esa cuenta |
 
 El widget añade `/verificar-cliente` y `/crear-lead` a esa URL.
 

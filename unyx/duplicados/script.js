@@ -1,9 +1,18 @@
 /* UNYX · Verificar Cliente
- * Widget privado de Kommo para Meditec.
+ * Widget privado de Kommo.
  *
- * Habla con los webhooks de n8n (flow.unyxsolutions.com) a través del proxy
- * de Kommo (self.crm_post), así que no hay CORS ni credenciales en el
- * navegador: el token de Kommo vive solo en n8n.
+ * Reglas de integración con Kommo (importantes):
+ *  - El script corre en la MISMA página que Kommo: nada de tocar document.body,
+ *    document.documentElement ni window, y ningún selector global.
+ *  - El ciclo de vida son los callbacks render/init/bind_actions. `render` debe
+ *    devolver true para que Kommo llame a init y bind_actions, y false en las
+ *    fichas de creación (leads/add, contacts/add), donde no hay que pintarse.
+ *  - La hoja de estilos se inserta DENTRO del markup del widget (patrón de la
+ *    documentación oficial), no en document.head: así vive y muere con el widget.
+ *  - Todo el CSS está encapsulado bajo .unyx-widget (ver style.css).
+ *  - Todos los nodos del DOM se buscan desde la raíz de ESTA instancia, que
+ *    lleva un id único. No se usan ids ni selectores globales.
+ *  - Las llamadas al backend van por self.crm_post (proxy de Kommo): sin CORS.
  *
  * Contrato y reglas: unyx/n8n/README.md
  */
@@ -11,14 +20,12 @@ define(['jquery'], function () {
   var CustomWidget = function () {
     var self = this;
 
-    // Cada cuenta de Kommo tiene su propio par de webhooks:
+    // Cada cuenta tiene su par de webhooks en n8n:
     //   <base>/verificar-cliente  y  <base>/crear-lead
-    // El administrador lo configura al instalar el widget, por ejemplo
-    // https://flow.unyxsolutions.com/webhook/unyx-meditec
     var CHECK_PATH = '/verificar-cliente';
     var CREATE_PATH = '/crear-lead';
-    var CAPTION_CLASS = 'unyx-caption';
 
+    var instanceId = 'unyx-root-' + Math.random().toString(36).slice(2, 9);
     var ui = {};
     var n8nUrl = '';
     var sharedToken = '';
@@ -38,49 +45,70 @@ define(['jquery'], function () {
       });
     }
 
-    function card() {
-      return document.querySelector('.unyx-card');
+    // Raíz de esta instancia. Si hay dos widgets en la página, cada uno
+    // encuentra el suyo y no se pisan los escuchadores.
+    function root() {
+      return document.getElementById(instanceId);
     }
 
-    function el(id) {
-      return card() ? card().querySelector('#' + id) : null;
+    function el(name) {
+      var host = root();
+      return host ? host.querySelector('[data-unyx="' + name + '"]') : null;
     }
 
     function show(view) {
-      var views = card() ? card().querySelectorAll('[data-view]') : [];
-      Array.prototype.forEach.call(views, function (node) {
-        node.hidden = node.getAttribute('data-view') !== view;
+      var host = root();
+      if (!host) return;
+      Array.prototype.forEach.call(host.querySelectorAll('[data-unyx-view]'), function (node) {
+        node.hidden = node.getAttribute('data-unyx-view') !== view;
       });
     }
 
+    // URL de la hoja de estilos, según la documentación del widget.
+    function styleHref() {
+      var base = (self.params && (self.params.cdn_path || self.params.path)) || '';
+      if (base) return base.replace(/\/+$/, '') + '/style.css';
+      var code = (self.get_settings() || {}).widget_code;
+      if (code) return '/widgets/' + encodeURIComponent(code) + '/style.css';
+      return 'style.css';
+    }
+
     function markup() {
+      var statusClass = 'unyx-status';
       return [
-        '<section class="unyx-card stack" aria-live="polite">',
-        '  <div class="unyx-view stack" data-view="initial">',
-        '    <div class="heading">',
-        '      <label class="label" for="unyx-phone">' + esc(t('formLabel')) + '</label>',
-        '      <p class="hint">' + esc(t('formHint')) + '</p>',
+        '<div class="unyx-widget" id="' + instanceId + '">',
+        '  <link rel="stylesheet" href="' + esc(styleHref()) + '">',
+        '  <section class="unyx-card unyx-stack" aria-live="polite">',
+        '    <div class="unyx-view unyx-stack" data-unyx-view="initial">',
+        '      <div class="unyx-heading">',
+        '        <label class="unyx-label" for="' + instanceId + '-phone">' + esc(t('formLabel')) + '</label>',
+        '        <p class="unyx-hint">' + esc(t('formHint')) + '</p>',
+        '      </div>',
+        '      <div class="unyx-phone">',
+        '        <span class="unyx-prefix">' + esc(t('prefix')) + '</span>',
+        '        <input id="' + instanceId + '-phone" data-unyx="phone" type="tel" inputmode="numeric"',
+        '          autocomplete="tel-national" maxlength="9" placeholder="' + esc(t('phonePlaceholder')) + '">',
+        '      </div>',
+        '      <p class="unyx-error-text" data-unyx="phone-error" hidden></p>',
+        '      <button class="unyx-button" data-unyx="verify" type="button" data-unyx-action="verify">' + esc(t('verify')) + '</button>',
         '    </div>',
-        '    <div class="phone">',
-        '      <span class="prefix">' + esc(t('prefix')) + '</span>',
-        '      <input id="unyx-phone" type="tel" inputmode="numeric" autocomplete="tel-national"',
-        '        maxlength="9" placeholder="' + esc(t('phonePlaceholder')) + '">',
+        '    <div class="unyx-view" data-unyx-view="loading" hidden>',
+        '      <div class="' + statusClass + '"><h2>' + esc(t('loadingTitle')) + '</h2><p>' + esc(t('loadingText')) + '</p></div>',
         '    </div>',
-        '    <p class="error-text" id="unyx-phone-error" hidden></p>',
-        '    <button id="unyx-verify" class="button" type="button" data-action="verify">' + esc(t('verify')) + '</button>',
-        '  </div>',
-        '  <div class="unyx-view" data-view="loading" hidden>',
-        '    <div class="status"><h2>' + esc(t('loadingTitle')) + '</h2><p>' + esc(t('loadingText')) + '</p></div>',
-        '  </div>',
-        '  <div class="unyx-view stack" data-view="result" hidden>',
-        '    <div id="unyx-result" class="status"><h2 id="unyx-result-title"></h2><p id="unyx-result-copy"></p><div id="unyx-result-extra" class="details"></div></div>',
-        '    <div class="actions">',
-        '      <button id="unyx-create" class="button" type="button" data-action="create" hidden>' + esc(t('createLead')) + '</button>',
-        '      <button id="unyx-retry" class="button secondary" type="button" data-action="verify" hidden>' + esc(t('retry')) + '</button>',
-        '      <button class="button secondary" type="button" data-action="reset">' + esc(t('newQuery')) + '</button>',
+        '    <div class="unyx-view unyx-stack" data-unyx-view="result" hidden>',
+        '      <div data-unyx="result" class="' + statusClass + '">',
+        '        <h2 data-unyx="result-title"></h2>',
+        '        <p data-unyx="result-copy"></p>',
+        '        <div data-unyx="result-extra" class="unyx-details"></div>',
+        '      </div>',
+        '      <div class="unyx-actions">',
+        '        <button class="unyx-button" data-unyx="create" type="button" data-unyx-action="create" hidden>' + esc(t('createLead')) + '</button>',
+        '        <button class="unyx-button unyx-secondary" data-unyx="retry" type="button" data-unyx-action="verify" hidden>' + esc(t('retry')) + '</button>',
+        '        <button class="unyx-button unyx-secondary" type="button" data-unyx-action="reset">' + esc(t('newQuery')) + '</button>',
+        '      </div>',
         '    </div>',
-        '  </div>',
-        '</section>'
+        '  </section>',
+        '</div>'
       ].join('\n');
     }
 
@@ -114,13 +142,21 @@ define(['jquery'], function () {
       if (lead.responsibleName) row.push(' · ' + esc(lead.responsibleName));
       row.push('</div>');
       if (lead.leadUrl) {
-        row.push('<div><a class="link" href="' + esc(lead.leadUrl) + '" target="_blank" rel="noopener">' + esc(t('openLeadItem')) + ' ↗</a></div>');
+        row.push('<div><a class="unyx-link" href="' + esc(lead.leadUrl) + '" target="_blank" rel="noopener">' + esc(t('openLeadItem')) + ' ↗</a></div>');
       }
       return row.join('');
     }
 
+    function setStatus(kind, title, text, lines) {
+      var box = el('result');
+      if (!box) return;
+      box.className = 'unyx-status unyx-status--' + kind;
+      el('result-title').textContent = title;
+      el('result-copy').textContent = text;
+      el('result-extra').innerHTML = (lines || []).join('');
+    }
+
     function renderResult(state) {
-      var box = el('unyx-result');
       var lines = [];
       var kind = 'info';
       var heading = t('genericError');
@@ -131,10 +167,10 @@ define(['jquery'], function () {
         lines.push('<div><b>' + esc(t('labelClient')) + ':</b> ' + esc(state.contactName) + '</div>');
       }
       if (state.contactCount > 1) {
-        lines.push('<div class="small">' + esc(t('labelContactsFound')) + ': ' + esc(state.contactCount) + '</div>');
+        lines.push('<div class="unyx-small">' + esc(t('labelContactsFound')) + ': ' + esc(state.contactCount) + '</div>');
       }
       if (state.closedLeadCount > 0) {
-        lines.push('<div class="small">' + esc(t('labelClosedHistory')) + ': ' + esc(state.closedLeadCount) + '</div>');
+        lines.push('<div class="unyx-small">' + esc(t('labelClosedHistory')) + ': ' + esc(state.closedLeadCount) + '</div>');
       }
 
       if (state.state === 'available') {
@@ -163,48 +199,42 @@ define(['jquery'], function () {
         text = state.message || t('checkErrorText');
       }
 
-      box.className = 'status ' + kind;
-      el('unyx-result-title').textContent = heading;
-      el('unyx-result-copy').textContent = text;
-      el('unyx-result-extra').innerHTML = lines.join('');
-      el('unyx-create').hidden = !canCreate;
-      el('unyx-retry').hidden = canCreate;
+      setStatus(kind, heading, text, lines);
+      el('create').hidden = !canCreate;
+      el('retry').hidden = canCreate;
       show('result');
     }
 
     function renderFailure(title, text) {
-      var box = el('unyx-result');
-      box.className = 'status error';
-      el('unyx-result-title').textContent = title;
-      el('unyx-result-copy').textContent = text;
-      el('unyx-result-extra').innerHTML = '';
-      el('unyx-create').hidden = true;
-      el('unyx-retry').hidden = false;
+      setStatus('error', title, text, []);
+      el('create').hidden = true;
+      el('retry').hidden = false;
       show('result');
     }
 
     function resetForm() {
       verified = null;
-      var input = el('unyx-phone');
+      var input = el('phone');
       input.value = '';
       input.removeAttribute('aria-invalid');
-      el('unyx-phone-error').hidden = true;
-      el('unyx-create').hidden = true;
-      el('unyx-retry').hidden = true;
+      el('phone-error').hidden = true;
+      el('create').hidden = true;
+      el('retry').hidden = true;
       show('initial');
       input.focus();
     }
 
     function setBusy(busy) {
-      var button = el('unyx-verify');
+      var button = el('verify');
+      if (!button) return;
       button.disabled = busy;
-      button.innerHTML = busy ? '<span class="spinner"></span>' + esc(t('verifying')) : esc(t('verify'));
+      button.innerHTML = busy ? '<span class="unyx-spinner"></span>' + esc(t('verifying')) : esc(t('verify'));
     }
 
     function verify() {
-      var input = el('unyx-phone');
+      var input = el('phone');
       var phone = input.value.replace(/\D/g, '');
-      var error = el('unyx-phone-error');
+      var error = el('phone-error');
 
       if (!/^9\d{8}$/.test(phone)) {
         input.setAttribute('aria-invalid', 'true');
@@ -220,8 +250,7 @@ define(['jquery'], function () {
         renderFailure(t('configErrorTitle'), t('configMissingUrl'));
         return;
       }
-
-      if (!account || !userId) {
+      if (!userId) {
         renderFailure(t('configErrorTitle'), t('advisorMissing'));
         return;
       }
@@ -249,7 +278,7 @@ define(['jquery'], function () {
 
     function create() {
       if (!verified || verified.state !== 'available') return;
-      var button = el('unyx-create');
+      var button = el('create');
       button.disabled = true;
       button.textContent = t('creatingLead');
 
@@ -262,17 +291,13 @@ define(['jquery'], function () {
       })
         .then(function (created) {
           verified = null;
-          var box = el('unyx-result');
-          box.className = 'status success';
-          el('unyx-result-title').textContent = t('createdTitle');
-          el('unyx-result-copy').textContent = t('createdText');
-          var extra = ['<div><b>' + esc(t('labelLead')) + ':</b> ' + esc(created.leadName || t('createdFallbackName')) + '</div>'];
+          var lines = ['<div><b>' + esc(t('labelLead')) + ':</b> ' + esc(created.leadName || t('createdFallbackName')) + '</div>'];
           if (created.leadUrl) {
-            extra.push('<div><a class="link" href="' + esc(created.leadUrl) + '" target="_blank" rel="noopener">' + esc(t('openLead')) + ' ↗</a></div>');
+            lines.push('<div><a class="unyx-link" href="' + esc(created.leadUrl) + '" target="_blank" rel="noopener">' + esc(t('openLead')) + ' ↗</a></div>');
           }
-          el('unyx-result-extra').innerHTML = extra.join('');
-          el('unyx-create').hidden = true;
-          el('unyx-retry').hidden = false;
+          setStatus('success', t('createdTitle'), t('createdText'), lines);
+          el('create').hidden = true;
+          el('retry').hidden = false;
           show('result');
         })
         .catch(function (error) {
@@ -282,10 +307,7 @@ define(['jquery'], function () {
           if (payload && payload.state) {
             verified = null;
             renderResult(payload);
-            var box = el('unyx-result');
-            box.className = 'status error';
-            el('unyx-result-title').textContent = t('createErrorTitle');
-            el('unyx-result-copy').textContent = payload.message || t('createErrorText');
+            setStatus('error', t('createErrorTitle'), payload.message || t('createErrorText'), []);
             return;
           }
           renderFailure(t('createErrorTitle'), (error && error.message) || t('createErrorText'));
@@ -303,15 +325,11 @@ define(['jquery'], function () {
       } catch (error) {
         system = {};
       }
-      var kommoContext = window.kommo_context || {};
-      var kommoUser = kommoContext.user || {};
-      var subdomain = system.subdomain || kommoContext.subdomain || '';
-      var id = parseInt(system.user_id || kommoUser.id || 0, 10);
-      var name = system.user_name || system.name || kommoUser.name || kommoUser.full_name || '';
+      var id = parseInt(system.user_id || 0, 10);
       return {
-        account: subdomain,
+        account: String(system.subdomain || '').toLowerCase(),
         userId: isNaN(id) ? 0 : id,
-        userName: String(name || '').trim()
+        userName: String(system.user_name || system.name || '').trim()
       };
     };
 
@@ -328,22 +346,15 @@ define(['jquery'], function () {
         userId = context.userId;
         userName = context.userName;
 
-        // No pintar sobre formularios de creación vacíos.
+        // En las fichas de creación (leads/add, contacts/add) no hay que
+        // pintarse: la documentación pide devolver false para que Kommo no
+        // llame a init ni a bind_actions.
         if (typeof APP !== 'undefined' && APP.data && APP.data.current_card && APP.data.current_card.id === 0) {
-          return true;
-        }
-
-        var base = (self.params && (self.params.cdn_path || self.params.path)) || '';
-        if (base && !document.querySelector('link[data-unyx-style]')) {
-          var link = document.createElement('link');
-          link.rel = 'stylesheet';
-          link.href = base.replace(/\/+$/, '') + '/style.css';
-          link.setAttribute('data-unyx-style', '1');
-          document.head.appendChild(link);
+          return false;
         }
 
         self.render_template({
-          caption: { class_name: CAPTION_CLASS },
+          caption: { class_name: 'unyx-caption' },
           body: markup(),
           render: ''
         });
@@ -351,29 +362,30 @@ define(['jquery'], function () {
       },
 
       init: function () {
-        var root = card();
-        if (root && boundEl !== root) {
-          boundEl = root;
-          root.addEventListener('input', function (event) {
+        var host = root();
+        if (host && boundEl !== host) {
+          boundEl = host;
+          host.addEventListener('input', function (event) {
             var input = event.target;
-            if (input.id !== 'unyx-phone') return;
+            if (!input || input.getAttribute('data-unyx') !== 'phone') return;
             var digits = input.value.replace(/\D/g, '').slice(0, 9);
             if (digits !== input.value) input.value = digits;
             if (input.getAttribute('aria-invalid') === 'true' && /^9\d{8}$/.test(digits)) {
               input.removeAttribute('aria-invalid');
-              el('unyx-phone-error').hidden = true;
+              el('phone-error').hidden = true;
             }
           });
-          root.addEventListener('keydown', function (event) {
-            if (event.key === 'Enter' && event.target.id === 'unyx-phone') {
+          host.addEventListener('keydown', function (event) {
+            var target = event.target;
+            if (event.key === 'Enter' && target && target.getAttribute('data-unyx') === 'phone') {
               event.preventDefault();
               verify();
             }
           });
-          root.addEventListener('click', function (event) {
-            var trigger = event.target.closest ? event.target.closest('[data-action]') : null;
+          host.addEventListener('click', function (event) {
+            var trigger = event.target.closest ? event.target.closest('[data-unyx-action]') : null;
             if (!trigger) return;
-            var action = trigger.getAttribute('data-action');
+            var action = trigger.getAttribute('data-unyx-action');
             if (action === 'verify') verify();
             if (action === 'create') create();
             if (action === 'reset') resetForm();

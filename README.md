@@ -18,7 +18,7 @@ widgets_kommo/
 │   │   ├── i18n/  images/
 │   │   ├── index.html  preview.js    ← vista previa local (no se empaquetan)
 │   │   └── README.md
-│   └── n8n/                          ← backend del widget: 1 par general, sirve a todos los clientes
+│   └── n8n/                          ← backend del widget: 1 par con una rama por cliente (Switch)
 │       ├── clientes.json             ← una entrada por cuenta de Kommo
 │       ├── unyx-verificar-cliente.json
 │       ├── unyx-crear-lead.json
@@ -55,10 +55,11 @@ node unyx/n8n/build.js                                   # regenera los workflow
 node unyx/n8n/test/logic.test.js                         # 88 comprobaciones sin n8n
 ```
 
-Los dos workflows de n8n (generales para todos los clientes) se importan a mano
-en `flow.unyxsolutions.com` y no tocan los flujos existentes de Meditec.
-Necesitan dos variables de entorno por cliente (token del widget y token de
-Kommo): el detalle está en `unyx/n8n/README.md`.
+Los dos workflows de n8n (uno por operación, con una rama por cliente) se
+importan a mano en `flow.unyxsolutions.com` y no tocan los flujos existentes de
+Meditec. Cada rama usa la credencial de n8n de su cuenta de Kommo, y el token
+del widget se pega en el nodo `Switch Cliente`: el detalle está en
+`unyx/n8n/README.md`.
 
 ## Despliegue en el VPS
 

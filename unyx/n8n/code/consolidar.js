@@ -1,17 +1,16 @@
 // =============================================================
 // UNYX · Verificar Cliente — Nodo "Consolidar"
-// Junta los datos del contacto con los nombres de los usuarios y con la
-// configuración del cliente resuelta por token.
+// Junta los datos del contacto con los nombres de los usuarios y con las
+// constantes del cliente de esta rama (subdominio y pipelines excluidos).
 //
 // No consulta pipelines ni etapas: la regla de atención activa se basa en
 // closed_at (ver _comun.js).
 // =============================================================
-const base = $('Unificar Contactos').first().json;
-const resolver = $('Resolver Cliente').first().json;
+const base = $('__N_UNIFICAR__').first().json;
 
 const userMap = {};
 try {
-  const users = $('Usuarios Kommo').first().json?._embedded?.users ?? [];
+  const users = $('__N_USUARIOS__').first().json?._embedded?.users ?? [];
   for (const user of users) userMap[user.id] = user.name;
 } catch (error) {
   // Sin permisos de administrador la lista de usuarios puede fallar:
@@ -21,9 +20,8 @@ try {
 return [{
   json: {
     ...base,
-    cliente: resolver.cliente,
-    subdomain: resolver.subdominio,
-    pipelinesExcluidos: resolver.pipelinesExcluidos || [],
+    subdomain: '__SUBDOMINIO__',
+    pipelinesExcluidos: __PIPELINES_EXCLUIDOS__,
     userMap,
   },
 }];

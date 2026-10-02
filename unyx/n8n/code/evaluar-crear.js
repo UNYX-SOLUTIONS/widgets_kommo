@@ -4,11 +4,11 @@
 // con datos frescos. Devuelve además el contacto a reutilizar y el nombre
 // del lead, para que el nodo de creación no tenga que recalcular nada.
 // =============================================================
-const data = $('Consolidar').first().json;
+const data = $('__N_CONSOLIDAR__').first().json;
 
 let leads = [];
 try {
-  leads = $('Obtener Leads').first().json?._embedded?.leads ?? [];
+  leads = $('__N_LEADS__').first().json?._embedded?.leads ?? [];
 } catch (error) {
   leads = [];
 }

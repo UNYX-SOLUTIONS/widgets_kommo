@@ -1,9 +1,7 @@
 # Workflows de n8n — UNYX · Verificar Cliente
 
-Backend del widget privado, **general para todos los clientes**. No hay un
-workflow por cliente: hay **dos workflows** que atienden a Altosa, Meditec,
-LuxViajes y los que se sumen. El cliente se decide por el **token** que envía el
-widget.
+Backend del widget privado. **Una rama por cliente** dentro de los dos
+workflows: no hay un workflow por cliente ni variables de entorno.
 
 | Archivo | Webhook | Qué hace |
 |---|---|---|
@@ -11,172 +9,220 @@ widget.
 | `unyx-crear-lead.json` | `POST /webhook/unyx/crear-lead` | **Re-valida** y crea el lead reutilizando el contacto. |
 
 - Host: `https://flow.unyxsolutions.com`
-- **No se usan credenciales de n8n.** El token de larga duración de cada cliente
-  se lee de una variable de entorno y se manda en la cabecera `Authorization`.
-- Los dos workflows son los mismos para todos los clientes: la única diferencia
-  entre clientes vive en el entorno de n8n.
+- El cliente se decide por el **token del widget**: `Switch Cliente` compara
+  `body.token` y manda la petición a la rama de ese cliente.
+- Cada rama usa la **credencial de n8n** de su cuenta de Kommo y la URL de su
+  subdominio. **No se usan variables de entorno.**
+- Clientes configurados hoy: Meditec, Altosa y LuxViajes.
 
 No se toca ni se reimporta ningún workflow existente
 (`kommo-widget-conversion`, `kommo-widget-ticket-promedio`, `kommo-cobranzas-*`).
 
 ---
 
-# 1. Los dos tokens
+# 1. Cómo queda el workflow
 
-Cada cliente necesita **dos** valores distintos. Ninguno se guarda en este
-repositorio: aquí solo van los **nombres** de las variables (`clientes.json`).
+```text
+Webhook (POST /unyx/verificar-cliente)
+   │
+   ▼
+Switch Cliente  ── token == PEGAR_TOKEN_MEDITEC ──► Meditec · ¿Cuenta Correcta? ──► cadena (credencial Meditec)
+   │            ── token == PEGAR_TOKEN_ALTOSA  ──► Altosa · ¿Cuenta Correcta?  ──► cadena (credencial Altosa)
+   │            ── token == PEGAR_TOKEN_LUXVIAJES ► LuxViajes · ¿Cuenta Correcta? ► cadena (credencial LuxViajes)
+   │
+   └── (salida extra) cualquier otro token ──────► Acceso Denegado ──► Responder al Widget
+```
 
-| Token | Qué es | Quién lo genera | Dónde vive |
+Cada rama, antes de tocar la API:
+
+- **`¿Cuenta Correcta?`**: comprueba que `body.account` (el subdominio que envía
+  el widget) sea el de ese cliente. Si no, `Cuenta Incorrecta` → responde
+  `ok:false`. Evita que un token válido opere sobre la cuenta equivocada.
+- **`Teléfono Válido`**: 9 dígitos de celular ecuatoriano. Si no, `Teléfono
+  Inválido` → responde `ok:false` en vez de reventar.
+
+Los nodos Code de cada rama están prefijados con el nombre del cliente
+(`Altosa · Consolidar`, etc.) y sólo referencian nodos de su propia rama. Hay
+una prueba automática que falla si una rama referencia nodos de otra.
+
+`acciones` del Switch: una salida por cliente **en el orden de `clientes.json`**,
+más una salida extra para el token que no coincide. Si se reordena
+`clientes.json` hay que regenerar e **reimportar**.
+
+---
+
+# 2. Los dos tokens (por cliente)
+
+Cada cliente necesita dos valores **distintos**. Ninguno se guarda en este
+repositorio.
+
+| Token | Qué es | Quién lo genera | Dónde va |
 |---|---|---|---|
-| **Token del widget** (`UNYX_SECRET_<CLIENTE>`) | La llave que usa el widget para identificarse y decir de qué cliente es. Es una barrera de acceso compartida. | **Lo generas tú** (UNYX) con el comando de abajo. | Variable de entorno de n8n + ajuste *Token de acceso* del widget en Kommo |
-| **Token de Kommo** (`KOMMO_TOKEN_<CLIENTE>`) | El token de larga duración de la integración privada de ese cliente. Es el que permite leer y escribir en su CRM. | **Lo genera Kommo** al crear la integración privada (pestaña *Claves y ámbitos*). | Variable de entorno de n8n |
+| **Token del widget** | Identifica de qué cliente es la petición. Es la barrera de acceso al webhook. | **UNYX** (comando de abajo) | Nodo `Switch Cliente` en n8n **y** ajuste *Token de acceso* del widget en Kommo |
+| **Token de Kommo** | Token de larga duración de la integración privada de esa cuenta. | Kommo, al crear la integración (*Claves y ámbitos*) | **Credencial de n8n** de ese cliente |
 
-## Cómo generar el token del widget
+## Generar el token del widget
 
-**Lo generas tú, no lo genero yo.** No hay ningún valor escrito en el código: si
-no lo defines en n8n, el workflow deniega todo.
-
-Un token por cliente, y distinto para cada uno: es lo que le dice al workflow en
-qué cuenta de Kommo debe trabajar. Si dos clientes compartieran token, el
-workflow no podría distinguirlos.
-
-### Windows (PowerShell 7)
+Uno por cliente, distinto en cada uno: es lo que le dice al Switch en qué rama
+entrar. Windows (PowerShell 7):
 
 ```powershell
 [Convert]::ToHexString([System.Security.Cryptography.RandomNumberGenerator]::GetBytes(32)).ToLower()
 ```
 
-Devuelve 64 caracteres hexadecimales, por ejemplo:
+Devuelve 64 caracteres hexadecimales. Ejecútalo tres veces (una por cliente) y
+anota cuál es de cuál. En Linux/macOS: `openssl rand -hex 32`.
 
-```
-31d89c2613d73dd09dc14ec64011dce2eb0fd0dd967e1af0aa35416a223f8a1a
-```
+Genera un comando que los imprima de una vez, si prefieres:
 
-Ejecútalo una vez por cliente.
-
-### Linux / macOS
-
-```bash
-openssl rand -hex 32
+```powershell
+1..3 | ForEach-Object { [Convert]::ToHexString([System.Security.Cryptography.RandomNumberGenerator]::GetBytes(32)).ToLower() }
 ```
 
-> En la máquina Windows de UNYX `openssl` no está en el PATH: usa el comando de
-> PowerShell.
-
-### Reglas
-
-- **64 caracteres o más**, aleatorio. No uses algo escribible a mano.
-- **Uno por cliente.** No reutilices el mismo entre Altosa y Meditec.
-- El mismo valor va en **dos sitios**: la variable de entorno de n8n y el ajuste
-  *Token de acceso del widget* en Kommo. Deben coincidir exactamente (el
-  workflow compara con `===`, distingue mayúsculas y no recorta espacios).
-- Si se filtra, se cambia en los dos sitios y listo: no hay que tocar código ni
-  reimportar workflows.
+El token debe ser hexadecimal: el Switch compara por igualdad de texto y un
+valor con caracteres especiales podría interpretarse como expresión en n8n.
 
 ## Cómo obtener el token de Kommo
 
-Es el **token de larga duración** de la integración privada, no el `client_id`
-ni el `secret_key`:
-
 1. En Kommo, como administrador: **Ajustes → Centro de integraciones**, abrir la
-   integración del cliente.
-2. Pestaña **Claves y ámbitos** → **token de larga duración**. Si no aparece,
-   generarlo ahí mismo.
-3. Ese valor va en la variable `KOMMO_TOKEN_<CLIENTE>`.
+   integración de ese cliente.
+2. Pestaña **Claves y ámbitos** → **token de larga duración**.
+3. Ese valor va en la credencial de n8n del cliente (siguiente sección).
 
-> La documentación de Kommo es explícita: si vas a usar un token de larga
-> duración, **no escribas nada en el campo "URL de redireccionamiento"** al
-> crear la integración.
+> Si vas a usar un token de larga duración, la documentación de Kommo pide **no
+> escribir nada en la URL de redireccionamiento** al crear la integración.
 
 ---
 
-# 2. Cómo funciona la selección de cliente
+# 3. Crear las credenciales en n8n
 
-El primer nodo de cada workflow es **`Resolver Cliente`**. No es un nodo *Switch*
-de n8n a propósito: el *Switch* v3, si el fallback no está bien configurado,
-**descarta en silencio** las peticiones que no casan ninguna regla, y el widget
-se quedaría esperando hasta el timeout. El nodo Code resuelve todos los casos de
-forma explícita y está cubierto por pruebas.
+Una credencial por cliente, todas del mismo tipo. En n8n:
 
-Qué hace, en orden:
+1. **Credentials → Add credential → Header Auth**.
+2. Rellenar:
+   - **Name**: `Kommo Meditec Token` (o `Kommo Altosa Token`, `Bearer Auth account`
+     para LuxViajes — los nombres ya están puestos en `clientes.json`).
+   - **Header Name**: `Authorization`
+   - **Header Value**: `Bearer <token de Kommo>` — la palabra `Bearer`, un
+     espacio y el token.
+3. Guardar.
 
-1. Compara el `token` que envía el widget contra el token de cada cliente
-   (`$env.UNYX_SECRET_<CLIENTE>`).
-   Si no coincide con ninguno → `ok:false` «Acceso no autorizado».
-   Si las variables de entorno no existen → tampoco coincide nada (falla cerrado).
-2. Comprueba que la cuenta que envía el widget (`account`, que el widget toma de
-   `self.system().subdomain`) sea la del cliente de ese token.
-   Si no → `ok:false`. Así el token de Altosa no puede operar en la cuenta de
-   Meditec aunque se equivoquen al configurar el widget.
-3. Comprueba que exista el token de Kommo de ese cliente.
-   Si falta → `ok:false` diciendo qué cliente está sin configurar.
-4. Devuelve la configuración resuelta (nombre, subdominio, token de Kommo y
-   pipelines excluidos) para el resto de la cadena.
+`clientes.json` referencia cada credencial por **id**, no por nombre:
 
-El siguiente nodo, `¿Autorizado?`, manda las peticiones rechazadas directamente
-al respondedor: **nunca se toca la API de Kommo con una petición no autorizada.**
+| Cliente | Credencial esperada | Id en `clientes.json` |
+|---|---|---|
+| Meditec | `Kommo Meditec Token` (`httpHeaderAuth`) | `rsBfubSe7f022RsT` |
+| Altosa | `Kommo Altosa Token` (`httpHeaderAuth`) | **placeholder, hay que reemplazarlo** |
+| LuxViajes | `Bearer Auth account` (`httpBearerAuth`) | `7VB4zRZNA0UkBt6D` |
 
-La lista de clientes vive en `unyx/n8n/clientes.json` y `build.js` la incrusta en
-ese nodo como referencias a variables de entorno:
+El id se ve en la URL al abrir la credencial en n8n
+(`/credentials/<id>`). Si creas la credencial de Altosa, actualiza
+`clientes.json`, ejecuta `node unyx/n8n/build.js` y reimporta. Alternativa sin
+regenerar: importar y **seleccionar la credencial a mano en los 3 nodos HTTP de
+esa rama** (y en los 6 del workflow de creación).
 
-```js
-{ nombre: "Altosa", subdominio: "altosa", secreto: $env.UNYX_SECRET_ALTOSA,
-  kommoToken: $env.KOMMO_TOKEN_ALTOSA, pipelinesExcluidos: [] },
-```
+Un nodo HTTP sin credencial **no falla al importar**: falla en la primera
+consulta del asesor, con un error genérico en el widget.
 
 ---
 
-# 3. Configurar las variables de entorno en n8n
+# 4. Instalación
 
-n8n lee las variables del entorno del proceso, así que hay que añadirlas al
-contenedor y **reiniciar n8n**. Con Docker Compose:
+1. Crear las 3 credenciales (sección 3).
+2. n8n → **Workflows → Import from File** → `unyx-verificar-cliente.json`.
+3. Repetir con `unyx-crear-lead.json`.
+4. En **cada uno** de los dos workflows: abrir `Switch Cliente` y reemplazar los
+   tres valores `PEGAR_TOKEN_*` por los tokens reales del widget.
+   **Mientras queden placeholders, todo cae en `Acceso Denegado`.**
+5. Revisar que cada nodo HTTP tenga su credencial seleccionada.
+6. **Activar** los dos workflows: el webhook de producción sólo existe con el
+   workflow activo.
+7. Probar:
 
-```yaml
-services:
-  n8n:
-    environment:
-      # Token del widget: lo generas tú, uno por cliente
-      - UNYX_SECRET_ALTOSA=<64 hex>
-      - UNYX_SECRET_MEDITEC=<64 hex>
-      - UNYX_SECRET_LUXVIAJES=<64 hex>
-      # Token de larga duración de Kommo: uno por cliente
-      - KOMMO_TOKEN_ALTOSA=<token de Kommo de Altosa>
-      - KOMMO_TOKEN_MEDITEC=<token de Kommo de Meditec>
-      - KOMMO_TOKEN_LUXVIAJES=<token de Kommo de LuxViajes>
-```
+   ```bash
+   curl -s -X POST https://flow.unyxsolutions.com/webhook/unyx/verificar-cliente \
+     -H 'content-type: application/json' \
+     -d '{"phone":"991234567","account":"altosa","userId":77,"token":"<token de Altosa>"}'
+   ```
 
-Luego:
+   Debe responder `{"ok":true,"state":…,"contactName":…}`.
 
-```bash
-docker compose up -d n8n     # recrea el contenedor con las variables
-docker compose logs -f n8n   # confirmar que arranca sin quejarse
-```
+   Pruebas negativas, una vez:
 
-Comprobaciones importantes:
+   ```bash
+   # token desconocido -> Acceso Denegado
+   curl -s -X POST https://flow.unyxsolutions.com/webhook/unyx/verificar-cliente \
+     -H 'content-type: application/json' -d '{"phone":"991234567","account":"altosa","token":"lo-que-sea"}'
 
-- Si n8n tiene `N8N_BLOCK_ENV_ACCESS_IN_NODE=true`, los nodos **no** pueden leer
-  `$env` y el workflow denegará todo. Hay que quitarlo.
-- Las variables se leen al arrancar: **cambiar una exige reiniciar n8n**.
-- En n8n Cloud no se pueden definir variables de entorno; este diseño es para
-  n8n autoalojado (que es el caso de `flow.unyxsolutions.com`).
+   # token de Altosa anunciando la cuenta de Meditec -> Cuenta Incorrecta
+   curl -s -X POST https://flow.unyxsolutions.com/webhook/unyx/verificar-cliente \
+     -H 'content-type: application/json' \
+     -d '{"phone":"991234567","account":"meditecec","token":"<token de Altosa>"}'
+   ```
 
-## Lo que hay que saber de este diseño
+   Si responde `{"code":404,"message":"webhook not registered"}`, el workflow no
+   está activo o la ruta no coincide.
 
-- El token del widget viaja en el cuerpo de cada petición y el de Kommo en la
-  cabecera. **n8n guarda los datos de cada ejecución**, así que ambos quedan en
-  el historial de ejecuciones. Cualquiera con acceso a ese historial puede
-  leerlos. Es el precio de tener un workflow único para todos los clientes.
-- La alternativa (una credencial de n8n por cliente) redacta los tokens en los
-  logs, pero obliga a repetir la cadena de nodos por cliente. Si en algún
-  momento pesa más la confidencialidad que el mantenimiento, se cambia.
-- El token del widget es una **barrera de acceso compartida**, no autenticación
-  por usuario: un asesor con las herramientas de desarrollo abiertas puede verlo.
-  Lo que evita es que cualquiera en internet, sin token, enumere contactos por
-  teléfono o cree leads en la cuenta.
+8. En los ajustes del widget en Kommo:
+   - *URL de los webhooks de n8n*: `https://flow.unyxsolutions.com/webhook/unyx`
+     (**igual para todos los clientes**)
+   - *Token de acceso de esta cuenta*: el token del widget de esa cuenta.
+
+## Actualizar un workflow ya desplegado
+
+Los JSON se generan con `"active": false`, así que reimportar **no** actualiza el
+que está en producción: crea uno nuevo. Además, **reimportar borra los tokens
+que pegaste en el Switch** (vuelven a quedar como `PEGAR_TOKEN_*`).
+
+Procedimiento por workflow:
+
+1. **Anotar** los tokens que hay puestos en `Switch Cliente` (o tenerlos a mano).
+2. **Desactivar** el workflow viejo: deja de responder el webhook.
+3. Reimportar el JSON regenerado.
+4. Revisar las credenciales de los nodos HTTP.
+5. **Volver a pegar los tokens** en `Switch Cliente`.
+6. **Activar** el nuevo, hacer `curl` de humo y borrar el workflow viejo.
+
+Los ajustes manuales en n8n (credenciales elegidas a mano, concurrencia = 1)
+tampoco viven en el repositorio y se pierden al reimportar.
 
 ---
 
-# 4. Regla de «atención activa»: solo `closed_at`
+# 5. Agregar un cliente
+
+1. Crear la integración privada en la cuenta de Kommo del cliente (Ajustes →
+   Centro de integraciones → Crear integración). **URL de redireccionamiento
+   vacía.**
+2. Obtener su **token de Kommo** (*Claves y ámbitos*) y crear su credencial
+   Header Auth en n8n.
+3. Generar su **token de widget** (comando de la sección 2).
+4. Agregar la entrada al final de `unyx/n8n/clientes.json`:
+
+   ```json
+   {
+     "slug": "nuevocliente",
+     "nombre": "Nuevo Cliente",
+     "subdominio": "sunsubdominio",
+     "tokenSwitch": "PEGAR_TOKEN_NUEVOCLIENTE",
+     "credencial": { "id": "<id en n8n>", "name": "Kommo Nuevo Cliente Token", "tipo": "httpHeaderAuth" },
+     "pipelinesExcluidos": []
+   }
+   ```
+
+   El **orden** importa: define las salidas del Switch.
+
+5. `node unyx/n8n/build.js` → regenera los dos workflows (44 y 65 nodos hoy).
+6. Reimportar los dos (procedimiento de arriba) y pegar los tokens.
+7. Instalar el widget en esa cuenta con su URL y su token.
+
+> Con más clientes, el workflow crece: cada cliente añade ~15 nodos a
+> `unyx-verificar-cliente` y ~21 a `unyx-crear-lead`. Es el coste aceptado de
+> este diseño; la alternativa era una variable de entorno por cliente, que
+> requiere acceso SSH.
+
+---
+
+# 6. Regla de «atención activa»: sólo `closed_at`
 
 Un lead del contacto está **activo** si no tiene `closed_at`. Kommo lo marca al
 cerrar el lead (ganado o perdido) y lo limpia si se reabre, así que no hace
@@ -190,105 +236,16 @@ falta consultar pipelines ni etapas.
 | Funciona en cualquier cuenta | no | sí |
 
 > ⚠️ Supuesto de proceso: para que un cliente no bloquee la creación, sus leads
-> tienen que estar **cerrados de verdad en Kommo** (movidos a una etapa de
-> ganado o perdido). Si el equipo deja leads viejos en etapas abiertas, seguirán
-> contando como atención activa — que es lo correcto, pero conviene saberlo.
+> tienen que estar **cerrados de verdad en Kommo**. Si el equipo deja leads
+> viejos en etapas abiertas, seguirán contando como atención activa.
 
-`pipelinesExcluidos` permite excluir pipelines completos de la regla, por
-cliente. LuxViajes excluye los mismos cuatro pipelines que su flujo de avisos de
-duplicados (`13416240, 13629516, 13629520, 13680940`). **Revisar con el cliente**
-si el widget debe compartir ese criterio o ser más estricto.
+`pipelinesExcluidos` permite excluir pipelines completos de la regla, por rama.
+LuxViajes excluye los mismos cuatro que su flujo de avisos de duplicados
+(`13416240, 13629516, 13629520, 13680940`). **Revisar con el cliente** si el
+widget debe compartir ese criterio o ser más estricto.
 
 Estados que devuelve la consulta: `available`, `same_agent`, `other_agent`,
 `multiple_leads`.
-
----
-
-# 5. Instalación
-
-1. Definir **las 6 variables de entorno** (3 clientes × 2 tokens) y reiniciar n8n.
-   Si falta alguna, ese cliente recibe «Acceso no autorizado» o «Falta el token
-   de Kommo» en lugar de funcionar.
-2. n8n → **Workflows → Import from File** → `unyx-verificar-cliente.json`.
-3. Repetir con `unyx-crear-lead.json`.
-4. **Activar** los dos: el webhook de producción solo existe con el workflow
-   activo. El widget usa `/webhook/…`, no `/webhook-test/…`.
-5. Probar (con el token real de un cliente):
-
-   ```bash
-   curl -s -X POST https://flow.unyxsolutions.com/webhook/unyx/verificar-cliente \
-     -H 'content-type: application/json' \
-     -d '{"phone":"991234567","account":"altosa","userId":77,"token":"<UNYX_SECRET_ALTOSA>"}'
-   ```
-
-   Debe responder `{"ok":true,"state":…,"contactName":…}`.
-
-   Pruebas negativas que conviene hacer una vez:
-
-   ```bash
-   # sin token -> Acceso no autorizado
-   curl -s -X POST https://flow.unyxsolutions.com/webhook/unyx/verificar-cliente \
-     -H 'content-type: application/json' -d '{"phone":"991234567","account":"altosa"}'
-
-   # token de un cliente en la cuenta de otro -> rechazado
-   curl -s -X POST https://flow.unyxsolutions.com/webhook/unyx/verificar-cliente \
-     -H 'content-type: application/json' \
-     -d '{"phone":"991234567","account":"meditecec","token":"<UNYX_SECRET_ALTOSA>"}'
-   ```
-
-   Si responde `{"code":404,"message":"webhook not registered"}`, el workflow no
-   está activo o la ruta no coincide.
-
-6. En Kommo, al instalar el widget, poner en los ajustes:
-   - *URL de los webhooks de n8n*: `https://flow.unyxsolutions.com/webhook/unyx`
-     (**igual para todos los clientes**)
-   - *Token de acceso del widget*: el `UNYX_SECRET_<CLIENTE>` de esa cuenta.
-
-## Actualizar un workflow ya desplegado
-
-Los JSON se generan con `"active": false`, así que reimportar **no** actualiza el
-que está en producción: crea uno nuevo y puede dejar dos workflows compitiendo
-por la misma ruta, o el viejo activo sirviendo código anterior.
-
-1. En n8n, **desactivar** el workflow viejo (deja de responder el webhook).
-2. Reimportar el JSON regenerado.
-3. **Activar** el nuevo y ejecutar un `curl` de humo de los dos webhooks.
-4. Borrar el workflow viejo.
-
-Los ajustes manuales en n8n (concurrencia = 1, por ejemplo) no viven en el
-repositorio y se pierden al reimportar: hay que repetirlos.
-
----
-
-# 6. Agregar un cliente
-
-1. Crear la integración privada en la cuenta de Kommo de ese cliente
-   (Ajustes → Centro de integraciones → Crear integración). **Dejar vacía la URL
-   de redireccionamiento.**
-2. Obtener su **token de larga duración** (pestaña *Claves y ámbitos*).
-3. Generar su **token de widget** (comando de PowerShell de arriba).
-4. Añadir las dos variables al entorno de n8n y reiniciar.
-5. Agregar la entrada en `unyx/n8n/clientes.json`:
-
-   ```json
-   {
-     "slug": "altosa",
-     "nombre": "Altosa",
-     "subdominio": "altosa",
-     "secretoEnv": "UNYX_SECRET_ALTOSA",
-     "kommoEnv": "KOMMO_TOKEN_ALTOSA",
-     "pipelinesExcluidos": []
-   }
-   ```
-
-   - `subdominio`: lo que va antes de `.kommo.com`.
-   - `pipelinesExcluidos`: pipelines que **no** cuentan como atención activa.
-
-6. `node unyx/n8n/build.js` → regenera **los dos** workflows (son los mismos para
-   todos, ahora con el cliente nuevo dentro).
-7. Reimportar los dos en n8n siguiendo el procedimiento de actualización de
-   arriba **una sola vez**, sin importar cuántos clientes haya.
-8. Instalar el widget en esa cuenta con su *URL de los webhooks* y su *token*.
 
 ---
 
@@ -306,15 +263,13 @@ Límites usados: `contacts` 250, `leads` 250, `users` 250.
   JS. Es deliberado: si la búsqueda de Kommo no fuera por subcadena, una sola
   consulta perdería contactos guardados con otro formato, y un falso
   «disponible» es exactamente el duplicado que el widget debe evitar. Si se
-  confirma en la cuenta que la búsqueda es por subcadena, se puede bajar a una
-  sola consulta editando `code/preparar-consultas.js`.
+  confirma que la búsqueda es por subcadena, se puede bajar a una sola consulta
+  editando `code/preparar-consultas.js`.
 - **Sin paginación**: ninguna lista pagina. Con más de 250 coincidencias, o más
-  de 250 leads enlazados a un contacto, la consulta se trunca en silencio. Para
-  teléfonos de 9 dígitos es improbable, pero conviene revisarlo si una cuenta
-  crece.
+  de 250 leads enlazados a un contacto, la consulta se trunca en silencio.
 - **Nombres de asesores**: `GET /users` requiere permisos de administrador. El
   nodo tiene `onError: continueRegularOutput`, así que un fallo **no** detiene la
-  ejecución: el widget muestra solo los ids.
+  ejecución: el widget muestra sólo los ids.
 
 # 8. Endpoints de Kommo usados
 
@@ -335,18 +290,19 @@ Límites usados: `contacts` 250, `leads` 250, `users` 250.
 Los JSON se generan; no se editan a mano.
 
 ```bash
-node unyx/n8n/build.js            # regenera los dos workflows generales
-node unyx/n8n/test/logic.test.js  # 88 comprobaciones sin n8n
+node unyx/n8n/build.js            # regenera los dos workflows (una rama por cliente)
+node unyx/n8n/test/logic.test.js  # 102 comprobaciones sin n8n
 ```
 
 | Archivo | Para qué |
 |---|---|
-| `clientes.json` | un registro por cuenta de Kommo (nombre, subdominio, nombres de variables) |
-| `code/resolver-cliente.js` | el switch por token; `build.js` incrusta la lista de clientes |
+| `clientes.json` | un registro por cuenta de Kommo: subdominio, credencial, token del Switch |
 | `code/_comun.js` | regla de atención activa y armado del estado |
-| `code/*.js` | lógica del resto de nodos Code |
-| `build.js` | arma los dos JSON desde los snippets |
-| `test/logic.test.js` | pruebas extraídas de los JSON generados |
+| `code/*.js` | lógica de cada nodo Code; `build.js` los adapta a cada rama |
+| `build.js` | arma los dos JSON: Switch, ramas, credenciales y posiciones |
+| `test/logic.test.js` | pruebas de la lógica, de la estructura y del encapsulado del widget |
 
-Cambiar una regla de negocio = editar el snippet, `node unyx/n8n/build.js`,
-reimportar los dos workflows.
+Aunque el JSON repite la cadena por cliente, el código no está duplicado:
+`rama()` construye cada rama desde los mismos snippets y reescribe las
+referencias entre nodos (`$('__N_UNIFICAR__')` → `$('Altosa · Unificar
+Contactos')`). Cambiar una regla en `code/` cambia las tres ramas.

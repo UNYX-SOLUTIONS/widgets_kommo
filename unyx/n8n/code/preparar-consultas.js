@@ -1,9 +1,11 @@
 // =============================================================
 // UNYX · Verificar Cliente — Nodo "Preparar Consultas"
 // Normaliza el celular ecuatoriano y genera una consulta por variante.
-// Los datos ya vienen validados y aplanados por "Resolver Cliente".
+// El payload viene del webhook (cuerpo de formulario de self.crm_post o JSON).
 // =============================================================
-const digits = String($json.phone || '').replace(/\D/g, '');
+const body = $json.body || $json;
+
+const digits = String(body.phone || '').replace(/\D/g, '');
 let local = digits;
 if (local.startsWith('593')) local = local.slice(3);
 if (local.startsWith('0')) local = local.slice(1);
@@ -13,18 +15,13 @@ if (!/^9\d{8}$/.test(local)) {
 }
 
 const phone = '+593' + local;
+const userId = parseInt(body.userId || 0, 10) || 0;
+const userName = String(body.userName || '').trim();
 
 // Kommo busca por texto libre sobre los campos personalizados: se consultan
 // las tres formas habituales de guardar el número y luego se compara exacto.
 const variants = [local, '0' + local, phone];
 
 return variants.map((variant) => ({
-  json: {
-    variant,
-    phone,
-    local,
-    userId: $json.userId,
-    userName: $json.userName,
-    subdominio: $json.subdominio,
-  },
+  json: { variant, phone, local, userId, userName },
 }));

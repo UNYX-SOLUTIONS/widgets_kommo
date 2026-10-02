@@ -3,8 +3,8 @@
 // Determina el estado y arma la respuesta que consume el widget.
 // Requiere las reglas compartidas (_comun.js), que build.js antepone.
 // =============================================================
-const data = $('Consolidar').first().json;
-const leads = $('Obtener Leads').first().json?._embedded?.leads ?? [];
+const data = $('__N_CONSOLIDAR__').first().json;
+const leads = $('__N_LEADS__').first().json?._embedded?.leads ?? [];
 
 const active = unyxActiveLeads(leads, data);
 const resolved = unyxResolveState(active, data.userId);

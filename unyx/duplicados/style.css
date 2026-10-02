@@ -1,2 +1,239 @@
-:root{font-family:Inter,Arial,sans-serif;color:#1e293b;font-synthesis:none}*{box-sizing:border-box}body{margin:0;padding:12px;background:#f1f3f5}.unyx-widget{width:100%;max-width:380px;margin:0 auto}.unyx-card{padding:16px;background:#fff;border:1px solid #e2e8f0;border-radius:12px;box-shadow:0 1px 3px #0f172a0d}.view[hidden]{display:none!important}.stack{display:grid;gap:12px}.heading{display:grid;gap:4px}.label{font-size:12px;font-weight:650}.hint,.copy{margin:0;color:#64748b;font-size:11px;line-height:1.5}.phone{display:flex;overflow:hidden;border:1px solid #cbd5e1;border-radius:10px;transition:.15s}.phone:focus-within{border-color:#1d4ed8;box-shadow:0 0 0 3px #1d4ed81a}.prefix{display:flex;align-items:center;padding:0 11px;border-right:1px solid #e2e8f0;background:#f8fafc;color:#475569;font:600 12px ui-monospace,monospace}.phone input{width:100%;min-width:0;padding:11px 12px;border:0;outline:0;color:#1e293b;font:500 12px ui-monospace,monospace;letter-spacing:.04em}.button{width:100%;min-height:38px;padding:9px 12px;border:0;border-radius:9px;background:#1e40af;color:white;font-size:12px;font-weight:650;cursor:pointer}.button:hover{background:#1e3a8a}.button:disabled{opacity:.6;cursor:wait}.secondary{background:transparent;color:#64748b}.secondary:hover{background:#f8fafc;color:#1e293b}.status{padding:12px;border:1px solid #cbd5e1;border-radius:10px;background:#f8fafc}.status h2{margin:0 0 4px;font-size:12px}.status p{margin:0;color:#475569;font-size:11px;line-height:1.5}.status.success{background:#ecfdf5;border-color:#a7f3d0}.status.warning{background:#fffbeb;border-color:#fde68a}.status.error{background:#fff7ed;border-color:#fed7aa}.status.blocked{background:#fff1f2;border-color:#fecdd3}.details{margin-top:8px;color:#334155;font-size:11px;line-height:1.6}.small{font-size:10px;color:#64748b}.actions{display:grid;gap:6px}.spinner{display:inline-block;width:13px;height:13px;margin-right:7px;vertical-align:-2px;border:2px solid #ffffff66;border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}
-.status.info{background:#eff6ff;border-color:#bfdbfe}.status.info h2{color:#1e40af}.error-text{margin:0;color:#b91c1c;font-size:11px;line-height:1.5}.link{color:#1d4ed8;font-weight:600;text-decoration:none}.link:hover{text-decoration:underline}.unyx-card{width:100%}
+/* =============================================================
+   UNYX · Verificar Cliente — estilos del widget
+   -------------------------------------------------------------
+   REGLA: todo selector empieza por .unyx-widget. Nada de `body`,
+   `html`, `:root` ni `*` sueltos, y ninguna clase sin prefijo.
+
+   Por qué: el script del widget se ejecuta en la MISMA página que
+   Kommo, y este archivo se carga en esa página. Un `body{margin:0}`
+   o un `.button{...}` sin prefijar se aplican a toda la interfaz de
+   Kommo y la dejan mal renderizada. Además las clases son
+   `unyx-*` para no chocar con las de Kommo.
+   ============================================================= */
+
+.unyx-widget {
+  --unyx-fg: #1e293b;
+  --unyx-muted: #64748b;
+  --unyx-soft: #475569;
+  --unyx-border: #e2e8f0;
+  --unyx-border-strong: #cbd5e1;
+  --unyx-bg: #f8fafc;
+  --unyx-brand: #1e40af;
+  --unyx-brand-dark: #1e3a8a;
+
+  width: 100%;
+  max-width: 380px;
+  margin: 0 auto;
+  color: var(--unyx-fg);
+  font-family: Inter, Arial, sans-serif;
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: left;
+  font-synthesis: none;
+}
+
+.unyx-widget * {
+  box-sizing: border-box;
+}
+
+.unyx-widget .unyx-card {
+  width: 100%;
+  padding: 16px;
+  background: #fff;
+  border: 1px solid var(--unyx-border);
+  border-radius: 12px;
+  box-shadow: 0 1px 3px #0f172a0d;
+}
+
+.unyx-widget .unyx-stack {
+  display: grid;
+  gap: 12px;
+}
+
+.unyx-widget .unyx-view[hidden] {
+  display: none !important;
+}
+
+.unyx-widget .unyx-heading {
+  display: grid;
+  gap: 4px;
+}
+
+.unyx-widget .unyx-label {
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.unyx-widget .unyx-hint {
+  margin: 0;
+  color: var(--unyx-muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.unyx-widget .unyx-phone {
+  display: flex;
+  overflow: hidden;
+  border: 1px solid var(--unyx-border-strong);
+  border-radius: 10px;
+  transition: border-color .15s, box-shadow .15s;
+}
+
+.unyx-widget .unyx-phone:focus-within {
+  border-color: #1d4ed8;
+  box-shadow: 0 0 0 3px #1d4ed81a;
+}
+
+.unyx-widget .unyx-prefix {
+  display: flex;
+  align-items: center;
+  padding: 0 11px;
+  border-right: 1px solid var(--unyx-border);
+  background: var(--unyx-bg);
+  color: var(--unyx-soft);
+  font: 600 12px ui-monospace, monospace;
+}
+
+.unyx-widget .unyx-phone input {
+  width: 100%;
+  min-width: 0;
+  padding: 11px 12px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--unyx-fg);
+  font: 500 12px ui-monospace, monospace;
+  letter-spacing: .04em;
+}
+
+.unyx-widget .unyx-button {
+  width: 100%;
+  min-height: 38px;
+  padding: 9px 12px;
+  border: 0;
+  border-radius: 9px;
+  background: var(--unyx-brand);
+  color: #fff;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.unyx-widget .unyx-button:hover {
+  background: var(--unyx-brand-dark);
+}
+
+.unyx-widget .unyx-button:disabled {
+  opacity: .6;
+  cursor: wait;
+}
+
+.unyx-widget .unyx-secondary {
+  background: transparent;
+  color: var(--unyx-muted);
+}
+
+.unyx-widget .unyx-secondary:hover {
+  background: var(--unyx-bg);
+  color: var(--unyx-fg);
+}
+
+.unyx-widget .unyx-status {
+  padding: 12px;
+  border: 1px solid var(--unyx-border-strong);
+  border-radius: 10px;
+  background: var(--unyx-bg);
+}
+
+.unyx-widget .unyx-status h2 {
+  margin: 0 0 4px;
+  font-size: 12px;
+}
+
+.unyx-widget .unyx-status p {
+  margin: 0;
+  color: var(--unyx-soft);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.unyx-widget .unyx-status--success {
+  background: #ecfdf5;
+  border-color: #a7f3d0;
+}
+
+.unyx-widget .unyx-status--warning {
+  background: #fffbeb;
+  border-color: #fde68a;
+}
+
+.unyx-widget .unyx-status--error {
+  background: #fff7ed;
+  border-color: #fed7aa;
+}
+
+.unyx-widget .unyx-status--blocked {
+  background: #fff1f2;
+  border-color: #fecdd3;
+}
+
+.unyx-widget .unyx-status--info {
+  background: #eff6ff;
+  border-color: #bfdbfe;
+}
+
+.unyx-widget .unyx-status--info h2 {
+  color: var(--unyx-brand);
+}
+
+.unyx-widget .unyx-details {
+  margin-top: 8px;
+  color: #334155;
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.unyx-widget .unyx-small {
+  font-size: 10px;
+  color: var(--unyx-muted);
+}
+
+.unyx-widget .unyx-actions {
+  display: grid;
+  gap: 6px;
+}
+
+.unyx-widget .unyx-error-text {
+  margin: 0;
+  color: #b91c1c;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.unyx-widget .unyx-link {
+  color: #1d4ed8;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.unyx-widget .unyx-link:hover {
+  text-decoration: underline;
+}
+
+.unyx-widget .unyx-spinner {
+  display: inline-block;
+  width: 13px;
+  height: 13px;
+  margin-right: 7px;
+  vertical-align: -2px;
+  border: 2px solid #ffffff66;
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: unyx-spin .7s linear infinite;
+}
+
+/* Nombre de keyframes con prefijo: los nombres de @keyframes son globales. */
+@keyframes unyx-spin {
+  to { transform: rotate(360deg); }
+}

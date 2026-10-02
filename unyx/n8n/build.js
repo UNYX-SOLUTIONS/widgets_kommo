@@ -1,23 +1,26 @@
 'use strict';
 
 /**
- * Genera los DOS workflows generales de n8n (sirven para todos los clientes):
+ * Genera los DOS workflows de n8n con una RAMA POR CLIENTE:
  *   unyx-verificar-cliente.json
  *   unyx-crear-lead.json
  *
- * El cliente se resuelve por token en el nodo "Resolver Cliente", a partir de
- * unyx/n8n/clientes.json. No hay un workflow por cliente.
+ * Estructura:
+ *   Webhook → Switch Cliente (compara body.token)
+ *              ├─ Meditec   → [IF cuenta] → cadena con credencial de Meditec
+ *              ├─ Altosa    → [IF cuenta] → cadena con credencial de Altosa
+ *              ├─ LuxViajes → [IF cuenta] → cadena con credencial de LuxViajes
+ *              └─ (extra)   → Acceso Denegado → Responder
+ *
+ * Cada rama tiene sus propios nodos HTTP con la credencial de n8n de ese
+ * cliente y la URL de su subdominio. No se usan variables de entorno.
  *
  * Uso: node unyx/n8n/build.js
  *
- * La cadena de nodos vive una sola vez en `cadenaComun()`: verificar y crear
- * comparten guarda de acceso, validación de teléfono, búsqueda de contactos,
- * lectura de leads y respondedor. No se pueden desincronizar.
- *
- * Autenticación de Kommo: no se usan credenciales de n8n. El token de larga
- * duración de cada cliente se lee de una variable de entorno
- * ($env.KOMMO_TOKEN_<CLIENTE>) y se envía en la cabecera Authorization. Los
- * tokens no están en este archivo ni en los JSON generados: solo sus nombres.
+ * Aunque el JSON generado repite la cadena por cliente (el diseño lo pide así
+ * para no necesitar SSH), el código no está duplicado: `rama()` construye las
+ * ramas desde los mismos snippets y `scoped()` prefija las referencias entre
+ * nodos. Cambiar una regla en code/_comun.js cambia las tres ramas.
  */
 
 const fs = require('fs');
@@ -25,41 +28,50 @@ const path = require('path');
 
 const CODE_DIR = path.join(__dirname, 'code');
 
-// Un único webhook base para todos los clientes: el cliente lo decide el token.
 const BASE_WEBHOOK = 'unyx';
-const RESOLVER = 'Resolver Cliente';
-const HOST = "{{ $('" + RESOLVER + "').first().json.subdominio }}.kommo.com";
-const AUTH = "=Bearer {{ $('" + RESOLVER + "').first().json.kommoToken }}";
-
-function api(pathname) {
-  return '=https://' + HOST + pathname;
-}
+const SWITCH = 'Switch Cliente';
+const DENEGADO = 'Acceso Denegado';
+const RESPONDER = 'Responder al Widget';
+const KOMMO_HOST = (subdominio) => 'https://' + subdominio + '.kommo.com';
 
 function read(name) {
   return fs.readFileSync(path.join(CODE_DIR, name), 'utf8').trim();
 }
 
-function clientesLiteral(clientes) {
-  const filas = clientes.map((cliente) =>
-    '  { nombre: ' + JSON.stringify(cliente.nombre) +
-    ', subdominio: ' + JSON.stringify(cliente.subdominio) +
-    ', secreto: $env.' + cliente.secretoEnv +
-    ', kommoToken: $env.' + cliente.kommoEnv +
-    ', pipelinesExcluidos: ' + JSON.stringify(cliente.pipelinesExcluidos || []) +
-    ' },'
-  );
-  return '[\n' + filas.join('\n') + '\n]';
+const CREDENCIAL_TIPOS = { httpHeaderAuth: true, httpBearerAuth: true };
+
+function credencialTipo(cliente) {
+  const tipo = cliente.credencial && cliente.credencial.tipo;
+  return CREDENCIAL_TIPOS[tipo] ? tipo : 'httpHeaderAuth';
+}
+
+/** Nombre de nodo dentro de la rama de un cliente. */
+function n(cliente, nombre) {
+  return cliente.nombre + ' · ' + nombre;
+}
+
+/** Adapta un snippet a la rama: referencias entre nodos, subdominio y exclusiones. */
+function scoped(snippet, cliente) {
+  return snippet
+    .replace(/\$\('__N_([A-Z_]+)__'\)/g, (match, clave) => {
+      const nombres = {
+        PREPARAR: 'Preparar Consultas',
+        UNIFICAR: 'Unificar Contactos',
+        USUARIOS: 'Usuarios Kommo',
+        CONSOLIDAR: 'Consolidar',
+        LEADS: 'Obtener Leads',
+        EVALUAR: 'Evaluar Atención',
+      };
+      if (!nombres[clave]) throw new Error('Placeholder de nodo desconocido: ' + clave);
+      return "$('" + n(cliente, nombres[clave]) + "')";
+    })
+    .replace(/__SUBDOMINIO__/g, cliente.subdominio)
+    .replace(/__PIPELINES_EXCLUIDOS__/g, JSON.stringify(cliente.pipelinesExcluidos || []))
+    .replace(/__CLIENTE__/g, cliente.nombre);
 }
 
 function codeNode(name, id, position, jsCode) {
-  return {
-    parameters: { jsCode },
-    id,
-    name,
-    type: 'n8n-nodes-base.code',
-    typeVersion: 2,
-    position,
-  };
+  return { parameters: { jsCode }, id, name, type: 'n8n-nodes-base.code', typeVersion: 2, position };
 }
 
 function ifNode(name, id, position, expression) {
@@ -106,13 +118,52 @@ function webhookNode(name, id, position, webhookPath, webhookId) {
   };
 }
 
-function http(name, id, position, parameters, nodeProps) {
+/** Switch por token. El caso que no coincide va a la salida extra (fallback). */
+function switchNode(name, id, position, clientes) {
+  return {
+    parameters: {
+      rules: {
+        values: clientes.map((cliente) => ({
+          conditions: {
+            options: { caseSensitive: true, leftValue: '', typeValidation: 'strict', version: 2 },
+            conditions: [
+              {
+                id: id + '-regla-' + cliente.slug,
+                // String(...) evita que un body sin token rompa la condición.
+                leftValue: '={{ String($json.body && $json.body.token || "") }}',
+                rightValue: cliente.tokenSwitch,
+                operator: { type: 'string', operation: 'equals' },
+              },
+            ],
+            combinator: 'and',
+          },
+          renameOutput: true,
+          outputKey: cliente.nombre,
+        })),
+      },
+      // Ver documentación de n8n: con 'extra' los items que no casan ninguna
+      // regla salen por una salida adicional en vez de descartarse.
+      options: { fallbackOutput: 'extra' },
+    },
+    id,
+    name,
+    type: 'n8n-nodes-base.switch',
+    typeVersion: 3.2,
+    position,
+  };
+}
+
+function httpNode(cliente, name, id, position, parameters, nodeProps) {
+  const tipo = credencialTipo(cliente);
+  const credentials = {};
+  credentials[tipo] = { id: cliente.credencial.id, name: cliente.credencial.name };
+
   return Object.assign(
     {
       parameters: Object.assign(
         {
-          sendHeaders: true,
-          headerParameters: { parameters: [{ name: 'Authorization', value: AUTH }] },
+          authentication: 'genericCredentialType',
+          genericAuthType: tipo,
           options: { response: { response: { responseFormat: 'json' } } },
         },
         parameters
@@ -122,6 +173,7 @@ function http(name, id, position, parameters, nodeProps) {
       type: 'n8n-nodes-base.httpRequest',
       typeVersion: 4.2,
       position,
+      credentials,
     },
     nodeProps || {}
   );
@@ -153,220 +205,237 @@ function note(content, position, height) {
   };
 }
 
-const IF_PHONE = '/^(?:\\+?593)?0?9\\d{8}$/.test(String($json.phone || "").replace(/[\\s\\-()]/g, ""))';
+const IF_PHONE = '/^(?:\\+?593)?0?9\\d{8}$/.test(String($json.body && $json.body.phone || "").replace(/[\\s\\-()]/g, ""))';
 const IF_HAS_LEADS = '$json.leadIds.length > 0';
 
-// -------------------------------------------------------------
-// Cadena común a los dos workflows
-// -------------------------------------------------------------
-
-function cadenaComun(clientes, codigo) {
-  const nodos = [
-    webhookNode(
-      'Webhook Widget',
-      'unyx-' + codigo + '-webhook',
-      [0, 300],
-      BASE_WEBHOOK + (codigo === 'v' ? '/verificar-cliente' : '/crear-lead'),
-      'b1a7c3d5-000' + (codigo === 'v' ? '1' : '2') + '-4a6b-8c9d-0e1f2a3b4c0' + (codigo === 'v' ? '1' : '2')
-    ),
-    codeNode(
-      RESOLVER,
-      'unyx-' + codigo + '-resolver',
-      [220, 300],
-      read('resolver-cliente.js').replace('__CLIENTES__', clientesLiteral(clientes))
-    ),
-    ifNode('¿Autorizado?', 'unyx-' + codigo + '-autorizado', [440, 300], '$json.autorizado === true'),
-    ifNode('Teléfono Válido', 'unyx-' + codigo + '-telefono', [660, 300], IF_PHONE),
-    codeNode('Teléfono Inválido', 'unyx-' + codigo + '-telefono-err', [880, 560], read('invalido.js')),
-    codeNode('Preparar Consultas', 'unyx-' + codigo + '-preparar', [880, 180], read('preparar-consultas.js')),
-    http('Buscar Contactos', 'unyx-' + codigo + '-contactos', [1100, 180], {
-      method: 'GET',
-      url: api('/api/v4/contacts'),
-      sendQuery: true,
-      queryParameters: {
-        parameters: [
-          { name: 'query', value: '={{ $json.variant }}' },
-          { name: 'with', value: 'leads' },
-          { name: 'limit', value: '250' },
-        ],
-      },
-    }),
-    codeNode('Unificar Contactos', 'unyx-' + codigo + '-unificar', [1320, 180], read('unificar-contactos.js')),
-    http('Usuarios Kommo', 'unyx-' + codigo + '-usuarios', [1540, 180], {
-      method: 'GET',
-      url: api('/api/v4/users'),
-      sendQuery: true,
-      queryParameters: { parameters: [{ name: 'limit', value: '250' }] },
-    }, {
-      // Un token sin permisos de administrador devuelve 403: sin esto la
-      // ejecución se detiene y la degradación de "Consolidar" nunca corre.
-      onError: 'continueRegularOutput',
-      alwaysOutputData: true,
-    }),
-    codeNode('Consolidar', 'unyx-' + codigo + '-consolidar', [1760, 180], read('consolidar.js')),
-    ifNode('¿Tiene Leads?', 'unyx-' + codigo + '-tiene-leads', [1980, 180], IF_HAS_LEADS),
-    http('Obtener Leads', 'unyx-' + codigo + '-leads', [2200, 80], {
-      method: 'GET',
-      url: api('/api/v4/leads?limit=250&{{ $json.leadIds.map((id) => "filter[id][]=" + id).join("&") }}'),
-    }),
-    respondNode('Responder al Widget', 'unyx-' + codigo + '-responder', [2600, 340]),
-  ];
-
-  const conexiones = {
-    'Webhook Widget': { main: [[{ node: RESOLVER, type: 'main', index: 0 }]] },
-    [RESOLVER]: { main: [[{ node: '¿Autorizado?', type: 'main', index: 0 }]] },
-    '¿Autorizado?': {
-      main: [
-        [{ node: 'Teléfono Válido', type: 'main', index: 0 }],
-        [{ node: 'Responder al Widget', type: 'main', index: 0 }],
-      ],
-    },
-    'Teléfono Válido': {
-      main: [
-        [{ node: 'Preparar Consultas', type: 'main', index: 0 }],
-        [{ node: 'Teléfono Inválido', type: 'main', index: 0 }],
-      ],
-    },
-    'Teléfono Inválido': { main: [[{ node: 'Responder al Widget', type: 'main', index: 0 }]] },
-    'Preparar Consultas': { main: [[{ node: 'Buscar Contactos', type: 'main', index: 0 }]] },
-    'Buscar Contactos': { main: [[{ node: 'Unificar Contactos', type: 'main', index: 0 }]] },
-    'Unificar Contactos': { main: [[{ node: 'Usuarios Kommo', type: 'main', index: 0 }]] },
-    'Usuarios Kommo': { main: [[{ node: 'Consolidar', type: 'main', index: 0 }]] },
-    'Consolidar': { main: [[{ node: '¿Tiene Leads?', type: 'main', index: 0 }]] },
-    'Obtener Leads': { main: [[{ node: 'Evaluar Atención', type: 'main', index: 0 }]] },
-    'Responder al Widget': { main: [[]] },
-  };
-
-  return { nodos, conexiones };
+function ifAccount(cliente) {
+  return 'String($json.body && $json.body.account || "").trim().toLowerCase() === "' + cliente.subdominio.toLowerCase() + '"';
 }
 
-function notaComun(clientes, codigo) {
-  const ruta = BASE_WEBHOOK + (codigo === 'v' ? '/verificar-cliente' : '/crear-lead');
-  const lineas = clientes.map((cliente) => '  - ' + cliente.nombre + ': `' + cliente.subdominio + '.kommo.com`');
-  const content =
-    '## UNYX · ' + (codigo === 'v' ? 'Verificar Cliente' : 'Crear Lead') + ' — general para todos los clientes\n' +
-    'Webhook: `' + ruta + '`\n\n' +
-    '**Cliente por token:** el nodo `' + RESOLVER + '` compara `body.token` con la variable de\n' +
-    'entorno de cada cliente. Si no coincide, o la cuenta no es la suya, o falta su token de\n' +
-    'Kommo, responde `ok:false` sin tocar la API.\n\n' +
-    '**Tokens de Kommo:** se leen de variables de entorno y se envían en la cabecera\n' +
-    '`Authorization`. Este workflow no usa credenciales de n8n.\n\n' +
-    'Clientes configurados:\n' + lineas.join('\n') + '\n\n' +
-    (codigo === 'v'
-      ? '- **Atención activa = lead sin `closed_at`**, salvo pipelines excluidos.\n' +
-        '- Busca el contacto por las 3 formas habituales del número y compara exacto.\n' +
-        '- `filter[contacts][]` NO existe en la API v4: se usan los ids de `with=leads`.\n'
-      : 'Re-valida justo antes de crear para evitar duplicados por concurrencia.\n' +
-        '- Reutiliza el contacto existente; si no existe, lo crea con el campo PHONE.\n' +
-        '- El lead se asigna al asesor del contexto (`userId` = `self.system().user_id`).\n' +
-        '- Sin pipeline_id ni status_id: Kommo usa la primera etapa del pipeline principal.\n\n' +
-        '**Concurrencia:** la revalidación reduce la ventana de carrera. Si tu versión de n8n\n' +
-        'permite limitar la concurrencia del workflow a 1, actívalo para cerrarla del todo.\n') +
-    'Generado por `unyx/n8n/build.js`: no editar este JSON a mano.';
+/**
+ * Construye la rama de un cliente y devuelve sus nodos, sus conexiones y el
+ * nodo por el que entra la rama (la primera IF de cuenta).
+ */
+function rama(cliente, codigo, y) {
+  const sufijo = '-' + codigo + '-' + cliente.slug;
+  const nodos = [];
+  const conexiones = {};
 
-  return note(content, [0, 40], codigo === 'v' ? 420 : 460);
-}
-
-function workflowVerificar(clientes) {
-  const { nodos, conexiones } = cadenaComun(clientes, 'v');
-
-  nodos.push(
-    codeNode('Evaluar Atención', 'unyx-v-evaluar', [2420, 80], read('_comun.js') + '\n\n' + read('evaluar-verificar.js')),
-    codeNode('Sin Leads Activos', 'unyx-v-sin-leads', [2420, 340], read('sin-leads-activos.js')),
-    notaComun(clientes, 'v')
+  const nodoCuenta = ifNode(n(cliente, '¿Cuenta Correcta?'), 'if-cuenta' + sufijo, [460, y], ifAccount(cliente));
+  const nodoCuentaError = codeNode(n(cliente, 'Cuenta Incorrecta'), 'cd-cuenta-err' + sufijo, [680, y + 260], scoped(read('cuenta-incorrecta.js'), cliente));
+  const nodoTelefono = ifNode(n(cliente, 'Teléfono Válido'), 'if-telefono' + sufijo, [680, y], IF_PHONE);
+  const nodoTelefonoError = codeNode(n(cliente, 'Teléfono Inválido'), 'cd-telefono-err' + sufijo, [900, y + 260], scoped(read('invalido.js'), cliente));
+  const nodoPreparar = codeNode(n(cliente, 'Preparar Consultas'), 'cd-preparar' + sufijo, [900, y], scoped(read('preparar-consultas.js'), cliente));
+  const nodoContactos = httpNode(cliente, n(cliente, 'Buscar Contactos'), 'ht-contactos' + sufijo, [1120, y], {
+    method: 'GET',
+    url: KOMMO_HOST(cliente.subdominio) + '/api/v4/contacts',
+    sendQuery: true,
+    queryParameters: {
+      parameters: [
+        { name: 'query', value: '={{ $json.variant }}' },
+        { name: 'with', value: 'leads' },
+        { name: 'limit', value: '250' },
+      ],
+    },
+  });
+  const nodoUnificar = codeNode(n(cliente, 'Unificar Contactos'), 'cd-unificar' + sufijo, [1340, y], scoped(read('unificar-contactos.js'), cliente));
+  const nodoUsuarios = httpNode(cliente, n(cliente, 'Usuarios Kommo'), 'ht-usuarios' + sufijo, [1560, y], {
+    method: 'GET',
+    url: KOMMO_HOST(cliente.subdominio) + '/api/v4/users',
+    sendQuery: true,
+    queryParameters: { parameters: [{ name: 'limit', value: '250' }] },
+  }, {
+    // Un token sin permisos de administrador devuelve 403: sin esto la
+    // ejecución se detiene y la degradación de "Consolidar" nunca corre.
+    onError: 'continueRegularOutput',
+    alwaysOutputData: true,
+  });
+  const nodoConsolidar = codeNode(n(cliente, 'Consolidar'), 'cd-consolidar' + sufijo, [1780, y], scoped(read('consolidar.js'), cliente));
+  const nodoTieneLeads = ifNode(n(cliente, '¿Tiene Leads?'), 'if-tiene-leads' + sufijo, [2000, y], IF_HAS_LEADS);
+  const nodoLeads = httpNode(cliente, n(cliente, 'Obtener Leads'), 'ht-leads' + sufijo, [2220, y - 100], {
+    method: 'GET',
+    url: KOMMO_HOST(cliente.subdominio) + '/api/v4/leads?limit=250&{{ $json.leadIds.map((id) => "filter[id][]=" + id).join("&") }}',
+  });
+  const nodoEvaluar = codeNode(
+    n(cliente, 'Evaluar Atención'),
+    'cd-evaluar' + sufijo,
+    [2440, y - 100],
+    scoped(read('_comun.js') + '\n\n' + read(codigo === 'v' ? 'evaluar-verificar.js' : 'evaluar-crear.js'), cliente)
   );
 
-  conexiones['¿Tiene Leads?'] = {
+  nodos.push(nodoCuenta, nodoCuentaError, nodoTelefono, nodoTelefonoError, nodoPreparar, nodoContactos, nodoUnificar, nodoUsuarios, nodoConsolidar, nodoTieneLeads, nodoLeads, nodoEvaluar);
+
+  conexiones[nodoCuenta.name] = {
     main: [
-      [{ node: 'Obtener Leads', type: 'main', index: 0 }],
-      [{ node: 'Sin Leads Activos', type: 'main', index: 0 }],
+      [{ node: nodoTelefono.name, type: 'main', index: 0 }],
+      [{ node: nodoCuentaError.name, type: 'main', index: 0 }],
     ],
   };
-  conexiones['Evaluar Atención'] = { main: [[{ node: 'Responder al Widget', type: 'main', index: 0 }]] };
-  conexiones['Sin Leads Activos'] = { main: [[{ node: 'Responder al Widget', type: 'main', index: 0 }]] };
-
-  return {
-    name: 'UNYX - Verificar Cliente (todos los clientes)',
-    nodes: nodos,
-    connections: conexiones,
-    pinData: {},
-    active: false,
-    settings: { executionOrder: 'v1', binaryMode: 'separate', callerPolicy: 'workflowsFromSameOwner' },
-    id: 'UnyxVerificarCl',
-    tags: [],
+  conexiones[nodoCuentaError.name] = { main: [[{ node: RESPONDER, type: 'main', index: 0 }]] };
+  conexiones[nodoTelefono.name] = {
+    main: [
+      [{ node: nodoPreparar.name, type: 'main', index: 0 }],
+      [{ node: nodoTelefonoError.name, type: 'main', index: 0 }],
+    ],
   };
-}
+  conexiones[nodoTelefonoError.name] = { main: [[{ node: RESPONDER, type: 'main', index: 0 }]] };
+  conexiones[nodoPreparar.name] = { main: [[{ node: nodoContactos.name, type: 'main', index: 0 }]] };
+  conexiones[nodoContactos.name] = { main: [[{ node: nodoUnificar.name, type: 'main', index: 0 }]] };
+  conexiones[nodoUnificar.name] = { main: [[{ node: nodoUsuarios.name, type: 'main', index: 0 }]] };
+  conexiones[nodoUsuarios.name] = { main: [[{ node: nodoConsolidar.name, type: 'main', index: 0 }]] };
+  conexiones[nodoConsolidar.name] = { main: [[{ node: nodoTieneLeads.name, type: 'main', index: 0 }]] };
+  conexiones[nodoLeads.name] = { main: [[{ node: nodoEvaluar.name, type: 'main', index: 0 }]] };
 
-function workflowCrear(clientes) {
-  const { nodos, conexiones } = cadenaComun(clientes, 'c');
-
-  nodos.push(
-    codeNode('Evaluar Atención', 'unyx-c-evaluar', [2420, 180], read('_comun.js') + '\n\n' + read('evaluar-crear.js')),
-    ifNode('¿Disponible?', 'unyx-c-disponible', [2640, 180], '$json.state === "available"'),
-    ifNode('¿Existe Contacto?', 'unyx-c-existe-contacto', [2860, 80], '$json.contactId !== null && $json.contactId !== undefined'),
-    http('Campos Contacto', 'unyx-c-campos', [3080, 300], {
+  if (codigo === 'v') {
+    const nodoSinLeads = codeNode(n(cliente, 'Sin Leads Activos'), 'cd-sin-leads' + sufijo, [2000, y + 160], scoped(read('sin-leads-activos.js'), cliente));
+    nodos.push(nodoSinLeads);
+    conexiones[nodoTieneLeads.name] = {
+      main: [
+        [{ node: nodoLeads.name, type: 'main', index: 0 }],
+        [{ node: nodoSinLeads.name, type: 'main', index: 0 }],
+      ],
+    };
+    conexiones[nodoEvaluar.name] = { main: [[{ node: RESPONDER, type: 'main', index: 0 }]] };
+    conexiones[nodoSinLeads.name] = { main: [[{ node: RESPONDER, type: 'main', index: 0 }]] };
+  } else {
+    const nodoDisponible = ifNode(n(cliente, '¿Disponible?'), 'if-disponible' + sufijo, [2440, y], '$json.state === "available"');
+    const nodoExisteContacto = ifNode(n(cliente, '¿Existe Contacto?'), 'if-existe-contacto' + sufijo, [2660, y - 100], '$json.contactId !== null && $json.contactId !== undefined');
+    const nodoCampos = httpNode(cliente, n(cliente, 'Campos Contacto'), 'ht-campos' + sufijo, [2880, y + 140], {
       method: 'GET',
       // Ruta documentada: /api/v4/{entidad}/custom_fields (no /contacts/fields).
-      url: api('/api/v4/contacts/custom_fields'),
+      url: KOMMO_HOST(cliente.subdominio) + '/api/v4/contacts/custom_fields',
       sendQuery: true,
       queryParameters: { parameters: [{ name: 'limit', value: '250' }] },
-    }),
-    http('Crear Contacto', 'unyx-c-crear-contacto', [3300, 300], {
+    });
+    const evaluar = n(cliente, 'Evaluar Atención');
+    const nodoCrearContacto = httpNode(cliente, n(cliente, 'Crear Contacto'), 'ht-crear-contacto' + sufijo, [3100, y + 140], {
       method: 'POST',
-      url: api('/api/v4/contacts'),
+      url: KOMMO_HOST(cliente.subdominio) + '/api/v4/contacts',
       sendBody: true,
       specifyBody: 'json',
       jsonBody:
-        '={{ JSON.stringify([{ name: ($(\'Evaluar Atención\').first().json.contactName || $(\'Evaluar Atención\').first().json.phone), responsible_user_id: $(\'Evaluar Atención\').first().json.userId, created_by: $(\'Evaluar Atención\').first().json.userId, custom_fields_values: [{ field_id: (($json._embedded && $json._embedded.custom_fields ? $json._embedded.custom_fields : []).find((f) => String(f.code || "").toUpperCase() === "PHONE") || {}).id, values: [{ value: $(\'Evaluar Atención\').first().json.phone, enum_code: "WORK" }] }] }]) }}',
-    }),
-    codeNode('Extraer Contacto', 'unyx-c-extraer', [3520, 300], read('extraer-contacto.js')),
-    http('Crear Lead', 'unyx-c-crear-lead', [3740, 80], {
+        "={{ JSON.stringify([{ name: ($('" + evaluar + "').first().json.contactName || $('" + evaluar + "').first().json.phone), responsible_user_id: $('" + evaluar + "').first().json.userId, created_by: $('" + evaluar + "').first().json.userId, custom_fields_values: [{ field_id: (($json._embedded && $json._embedded.custom_fields ? $json._embedded.custom_fields : []).find((f) => String(f.code || \"\").toUpperCase() === \"PHONE\") || {}).id, values: [{ value: $('" + evaluar + "').first().json.phone, enum_code: \"WORK\" }] }] }]) }}",
+    });
+    const nodoExtraer = codeNode(n(cliente, 'Extraer Contacto'), 'cd-extraer' + sufijo, [3320, y + 140], scoped(read('extraer-contacto.js'), cliente));
+    const nodoCrearLead = httpNode(cliente, n(cliente, 'Crear Lead'), 'ht-crear-lead' + sufijo, [3540, y - 100], {
       method: 'POST',
-      url: api('/api/v4/leads'),
+      url: KOMMO_HOST(cliente.subdominio) + '/api/v4/leads',
       sendBody: true,
       specifyBody: 'json',
       jsonBody:
         '={{ JSON.stringify([{ name: $json.leadName, responsible_user_id: $json.userId, created_by: $json.userId, updated_by: $json.userId, _embedded: { contacts: [{ id: $json.contactId, is_main: true }] } }]) }}',
-    }),
-    codeNode('Resultado', 'unyx-c-resultado', [3960, 80], read('resultado.js')),
-    codeNode('Bloqueado', 'unyx-c-bloqueado', [2860, 460], read('bloqueado.js')),
-    notaComun(clientes, 'c')
-  );
+    });
+    const nodoResultado = codeNode(n(cliente, 'Resultado'), 'cd-resultado' + sufijo, [3760, y - 100], scoped(read('resultado.js'), cliente));
+    const nodoBloqueado = codeNode(n(cliente, 'Bloqueado'), 'cd-bloqueado' + sufijo, [2660, y + 260], scoped(read('bloqueado.js'), cliente));
 
-  conexiones['¿Tiene Leads?'] = {
+    nodos.push(nodoDisponible, nodoExisteContacto, nodoCampos, nodoCrearContacto, nodoExtraer, nodoCrearLead, nodoResultado, nodoBloqueado);
+
+    conexiones[nodoTieneLeads.name] = {
+      main: [
+        [{ node: nodoLeads.name, type: 'main', index: 0 }],
+        [{ node: nodoEvaluar.name, type: 'main', index: 0 }],
+      ],
+    };
+    conexiones[nodoEvaluar.name] = { main: [[{ node: nodoDisponible.name, type: 'main', index: 0 }]] };
+    conexiones[nodoDisponible.name] = {
+      main: [
+        [{ node: nodoExisteContacto.name, type: 'main', index: 0 }],
+        [{ node: nodoBloqueado.name, type: 'main', index: 0 }],
+      ],
+    };
+    conexiones[nodoExisteContacto.name] = {
+      main: [
+        [{ node: nodoCrearLead.name, type: 'main', index: 0 }],
+        [{ node: nodoCampos.name, type: 'main', index: 0 }],
+      ],
+    };
+    conexiones[nodoCampos.name] = { main: [[{ node: nodoCrearContacto.name, type: 'main', index: 0 }]] };
+    conexiones[nodoCrearContacto.name] = { main: [[{ node: nodoExtraer.name, type: 'main', index: 0 }]] };
+    conexiones[nodoExtraer.name] = { main: [[{ node: nodoCrearLead.name, type: 'main', index: 0 }]] };
+    conexiones[nodoCrearLead.name] = { main: [[{ node: nodoResultado.name, type: 'main', index: 0 }]] };
+    conexiones[nodoResultado.name] = { main: [[{ node: RESPONDER, type: 'main', index: 0 }]] };
+    conexiones[nodoBloqueado.name] = { main: [[{ node: RESPONDER, type: 'main', index: 0 }]] };
+  }
+
+  return { nodos, conexiones, entrada: nodoCuenta.name };
+}
+
+function nota(clientes, codigo) {
+  const ruta = BASE_WEBHOOK + (codigo === 'v' ? '/verificar-cliente' : '/crear-lead');
+  const lineas = clientes.map(
+    (cliente) =>
+      '- **' + cliente.nombre + '** → `' + cliente.subdominio + '.kommo.com` · credencial «' + cliente.credencial.name +
+      '» · token del widget: `' + cliente.tokenSwitch + '`'
+  );
+  const content =
+    '## UNYX · ' + (codigo === 'v' ? 'Verificar Cliente' : 'Crear Lead') + ' — una rama por cliente\n' +
+    'Webhook: `' + ruta + '`\n\n' +
+    '**Antes de activar:** abrir `' + SWITCH + '` y reemplazar cada valor `PEGAR_TOKEN_*\n' +
+    'por el token real del widget de ese cliente. Los placeholders no coinciden con\n' +
+    'ningún token, así que todo cae en `' + DENEGADO + '` hasta que se rellenen.\n\n' +
+    'Cada rama usa la credencial de n8n de su cliente y la URL de su subdominio:\n' +
+    lineas.join('\n') + '\n\n' +
+    'Los nodos HTTP llevan la credencial seleccionada; si al importar aparece sin\n' +
+    'credencial, hay que elegirla a mano (pasa cuando el id no existe en la instancia).\n\n' +
+    (codigo === 'v'
+      ? '- **Atención activa = lead sin `closed_at`**, salvo pipelines excluidos.\n' +
+        '- `filter[contacts][]` NO existe en la API v4: se usan los ids de `with=leads`.\n'
+      : 'Re-valida justo antes de crear para evitar duplicados por concurrencia.\n' +
+        '- Reutiliza el contacto existente; si no existe, lo crea con el campo PHONE.\n' +
+        '- Sin pipeline_id ni status_id: Kommo usa la primera etapa del pipeline principal.\n\n' +
+        '**Concurrencia:** la revalidación reduce la ventana de carrera. Si tu versión de n8n\n' +
+        'permite limitar la concurrencia del workflow a 1, actívalo para cerrarla del todo.\n') +
+    'Generado por `unyx/n8n/build.js`: no editar este JSON a mano (salvo los tokens del Switch).';
+
+  return note(content, [0, 40], codigo === 'v' ? 480 : 520);
+}
+
+function workflow(clientes, codigo) {
+  const nodos = [
+    webhookNode(
+      'Webhook Widget',
+      'unyx-' + codigo + '-webhook',
+      [0, 400],
+      BASE_WEBHOOK + (codigo === 'v' ? '/verificar-cliente' : '/crear-lead'),
+      'b1a7c3d5-000' + (codigo === 'v' ? '1' : '2') + '-4a6b-8c9d-0e1f2a3b4c0' + (codigo === 'v' ? '1' : '2')
+    ),
+    switchNode(SWITCH, 'unyx-' + codigo + '-switch', [240, 400], clientes),
+    codeNode(DENEGADO, 'unyx-' + codigo + '-denegado', [460, 900], read('acceso-denegado.js')),
+    respondNode(RESPONDER, 'unyx-' + codigo + '-responder', [4300, 400]),
+  ];
+
+  const conexiones = {
+    'Webhook Widget': { main: [[{ node: SWITCH, type: 'main', index: 0 }]] },
+    [DENEGADO]: { main: [[{ node: RESPONDER, type: 'main', index: 0 }]] },
+  };
+
+  const ramas = [];
+  clientes.forEach((cliente, indice) => {
+    const construida = rama(cliente, codigo, 200 + indice * 620);
+    nodos.push(...construida.nodos);
+    Object.assign(conexiones, construida.conexiones);
+    ramas.push(construida.entrada);
+  });
+
+  // El Switch tiene una salida por regla, en el mismo orden que clientes.json,
+  // más una salida extra (la última) para los tokens que no coinciden.
+  conexiones[SWITCH] = {
     main: [
-      [{ node: 'Obtener Leads', type: 'main', index: 0 }],
-      [{ node: 'Evaluar Atención', type: 'main', index: 0 }],
+      ...ramas.map((entrada) => [{ node: entrada, type: 'main', index: 0 }]),
+      [{ node: DENEGADO, type: 'main', index: 0 }],
     ],
   };
-  conexiones['Evaluar Atención'] = { main: [[{ node: '¿Disponible?', type: 'main', index: 0 }]] };
-  conexiones['¿Disponible?'] = {
-    main: [
-      [{ node: '¿Existe Contacto?', type: 'main', index: 0 }],
-      [{ node: 'Bloqueado', type: 'main', index: 0 }],
-    ],
-  };
-  conexiones['¿Existe Contacto?'] = {
-    main: [
-      [{ node: 'Crear Lead', type: 'main', index: 0 }],
-      [{ node: 'Campos Contacto', type: 'main', index: 0 }],
-    ],
-  };
-  conexiones['Campos Contacto'] = { main: [[{ node: 'Crear Contacto', type: 'main', index: 0 }]] };
-  conexiones['Crear Contacto'] = { main: [[{ node: 'Extraer Contacto', type: 'main', index: 0 }]] };
-  conexiones['Extraer Contacto'] = { main: [[{ node: 'Crear Lead', type: 'main', index: 0 }]] };
-  conexiones['Crear Lead'] = { main: [[{ node: 'Resultado', type: 'main', index: 0 }]] };
-  conexiones['Resultado'] = { main: [[{ node: 'Responder al Widget', type: 'main', index: 0 }]] };
-  conexiones['Bloqueado'] = { main: [[{ node: 'Responder al Widget', type: 'main', index: 0 }]] };
+
+  nodos.push(nota(clientes, codigo));
 
   return {
-    name: 'UNYX - Crear Lead (todos los clientes)',
+    name: 'UNYX - ' + (codigo === 'v' ? 'Verificar Cliente' : 'Crear Lead') + ' (una rama por cliente)',
     nodes: nodos,
     connections: conexiones,
     pinData: {},
     active: false,
     settings: { executionOrder: 'v1', binaryMode: 'separate', callerPolicy: 'workflowsFromSameOwner' },
-    id: 'UnyxCrearLead',
+    id: codigo === 'v' ? 'UnyxVerificarCl' : 'UnyxCrearLead',
     tags: [],
   };
 }
@@ -385,23 +454,24 @@ if (!clientes.length) {
 }
 
 const invalidos = clientes.filter(
-  (cliente) => !cliente.slug || !cliente.nombre || !cliente.subdominio || !cliente.secretoEnv || !cliente.kommoEnv
+  (cliente) => !cliente.slug || !cliente.nombre || !cliente.subdominio || !cliente.tokenSwitch || !cliente.credencial || !cliente.credencial.id
 );
 if (invalidos.length) {
-  console.error('Clientes incompletos (faltan slug, nombre, subdominio, secretoEnv o kommoEnv):');
+  console.error('Clientes incompletos (faltan slug, nombre, subdominio, tokenSwitch o credencial.id):');
   invalidos.forEach((cliente) => console.error('  - ' + (cliente.nombre || cliente.slug || '(sin nombre)')));
   process.exit(1);
 }
 
-console.log('Clientes en el workflow general:');
-clientes.forEach((cliente) => {
+console.log('Ramas del Switch (el orden define las salidas):');
+clientes.forEach((cliente, indice) => {
   console.log(
-    '  ' + cliente.nombre.padEnd(12) + ' ' + (cliente.subdominio + '.kommo.com').padEnd(28) +
-    '$env.' + cliente.secretoEnv.padEnd(24) + '$env.' + cliente.kommoEnv
+    '  [' + indice + '] ' + cliente.nombre.padEnd(12) + (cliente.subdominio + '.kommo.com').padEnd(28) +
+    'cred: ' + cliente.credencial.name.padEnd(24) + 'token: ' + cliente.tokenSwitch
   );
 });
+console.log('  [extra] tokens que no coinciden → ' + DENEGADO);
 console.log('');
-console.log('Webhook para todos los clientes: https://flow.unyxsolutions.com/webhook/' + BASE_WEBHOOK);
+console.log('Webhook: https://flow.unyxsolutions.com/webhook/' + BASE_WEBHOOK);
 console.log('');
-writeWorkflow('unyx-verificar-cliente.json', workflowVerificar(clientes));
-writeWorkflow('unyx-crear-lead.json', workflowCrear(clientes));
+writeWorkflow('unyx-verificar-cliente.json', workflow(clientes, 'v'));
+writeWorkflow('unyx-crear-lead.json', workflow(clientes, 'c'));
