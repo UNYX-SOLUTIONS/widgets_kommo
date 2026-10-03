@@ -631,6 +631,23 @@ define(["jquery"], function () {
 
       var appUser = app.current_user || app.user || {};
 
+      // Constantes documentadas del WEB SDK (Environment variables).
+      // APP.constant('user') devuelve el usuario actual, con id y name.
+      function constante(clave) {
+        try {
+          return typeof APP !== "undefined" &&
+            APP &&
+            typeof APP.constant === "function"
+            ? APP.constant(clave) || {}
+            : {};
+        } catch (error) {
+          return {};
+        }
+      }
+
+      var usuarioConstante = constante("user");
+      var cuentaConstante = constante("account");
+
       function primero() {
         for (var i = 0; i < arguments.length; i++) {
           var valor = arguments[i];
@@ -650,6 +667,7 @@ define(["jquery"], function () {
         primero(
           system.user_id,
           system.userId,
+          usuarioConstante.id,
           app.current_user_id,
           app.user_id,
           appUser.id,
@@ -660,7 +678,12 @@ define(["jquery"], function () {
       if (!Number.isFinite(id) || id <= 0) id = 0;
 
       var subdominio = String(
-        primero(system.subdomain, app.subdomain, ""),
+        primero(
+          system.subdomain,
+          cuentaConstante.subdomain,
+          app.subdomain,
+          "",
+        ),
       ).toLowerCase();
 
       if (
@@ -680,6 +703,7 @@ define(["jquery"], function () {
           primero(
             system.user_name,
             system.name,
+            usuarioConstante.name,
             app.user_name,
             appUser.name,
             "",
@@ -711,6 +735,33 @@ define(["jquery"], function () {
           userId: userId,
           userName: userName,
         });
+
+        // Si no se pudo leer el asesor, se vuelca qué devuelve cada fuente
+        // para diagnosticarlo desde la consola. No imprime tokens.
+        if (!userId) {
+          var intentar = function (fn) {
+            try {
+              return fn();
+            } catch (error) {
+              return "error: " + error.message;
+            }
+          };
+
+          console.warn("[UNYX] Sin asesor. Diagnóstico:", {
+            "self.system()": intentar(function () {
+              return self.system();
+            }),
+            "APP.constant('user')": intentar(function () {
+              return APP.constant("user");
+            }),
+            "APP.getWidgetsArea()": intentar(function () {
+              return APP.getWidgetsArea();
+            }),
+            "APP.data (claves)": intentar(function () {
+              return Object.keys(APP.data || {});
+            }),
+          });
+        }
       }
 
       return context;

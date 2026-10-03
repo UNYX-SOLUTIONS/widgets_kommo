@@ -129,7 +129,7 @@
       "parameters": {
         "url": "https://unyx.kommo.com/api/v4/contacts",
         "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
+        "genericAuthType": "httpBearerAuth",
         "sendQuery": true,
         "queryParameters": {
           "parameters": [
@@ -167,6 +167,10 @@
         "httpHeaderAuth": {
           "id": "fRLOGrD5I32LciFR",
           "name": "Unyx-Credential-widget"
+        },
+        "httpBearerAuth": {
+          "id": "pOQ04JPJgisDEMGi",
+          "name": "Unyx-Credential-widget"
         }
       }
     },
@@ -187,7 +191,7 @@
       "parameters": {
         "url": "https://unyx.kommo.com/api/v4/users",
         "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
+        "genericAuthType": "httpBearerAuth",
         "sendQuery": true,
         "queryParameters": {
           "parameters": [
@@ -217,6 +221,10 @@
       "credentials": {
         "httpHeaderAuth": {
           "id": "fRLOGrD5I32LciFR",
+          "name": "Unyx-Credential-widget"
+        },
+        "httpBearerAuth": {
+          "id": "pOQ04JPJgisDEMGi",
           "name": "Unyx-Credential-widget"
         }
       },
@@ -271,9 +279,9 @@
     },
     {
       "parameters": {
-        "url": "https://unyx.kommo.com/api/v4/leads?limit=250&{{ $json.leadIds.map((id) => \"filter[id][]=\" + id).join(\"&\") }}",
+        "url": "=https://unyx.kommo.com/api/v4/leads?limit=250&{{ $json.leadIds.map((id) => \"filter[id][]=\" + id).join(\"&\") }}",
         "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
+        "genericAuthType": "httpBearerAuth",
         "options": {
           "response": {
             "response": {
@@ -294,12 +302,16 @@
         "httpHeaderAuth": {
           "id": "fRLOGrD5I32LciFR",
           "name": "Unyx-Credential-widget"
+        },
+        "httpBearerAuth": {
+          "id": "pOQ04JPJgisDEMGi",
+          "name": "Unyx-Credential-widget"
         }
       }
     },
     {
       "parameters": {
-        "jsCode": "// =============================================================\n// UNYX · Verificar Cliente — Reglas compartidas\n// Este archivo NO se ejecuta solo: build.js lo antepone a los nodos que\n// evalúan leads, para que la regla de \"atención activa\" viva en un solo lugar.\n//\n// REGLA: un lead está ACTIVO si no tiene closed_at.\n// Kommo marca closed_at cuando el lead se cierra (ganado o perdido) y lo\n// limpia si se reabre. Por eso no hace falta consultar pipelines ni etapas:\n// la regla funciona igual en cualquier cuenta y en cualquier pipeline.\n// =============================================================\n\nfunction unyxIsActive(lead, data) {\n  if (!lead || lead.is_deleted) return false;\n  if (data && (data.pipelinesExcluidos || []).includes(lead.pipeline_id)) return false;\n  return !lead.closed_at;\n}\n\nfunction unyxDecorate(lead, data) {\n  return {\n    id: lead.id,\n    name: lead.name || '#' + lead.id,\n    created_at: lead.created_at || 0,\n    responsible_user_id: lead.responsible_user_id || 0,\n    responsibleName: data.userMap[lead.responsible_user_id] || '',\n    leadUrl: 'https://' + data.subdomain + '.kommo.com/leads/' + lead.id,\n  };\n}\n\n// Devuelve solo las atenciones activas, de la más reciente a la más antigua.\nfunction unyxActiveLeads(leads, data) {\n  return (leads || [])\n    .filter((lead) => unyxIsActive(lead, data))\n    .map((lead) => unyxDecorate(lead, data))\n    .sort((a, b) => b.created_at - a.created_at);\n}\n\nfunction unyxClosedCount(leads, data) {\n  const excluded = (data && data.pipelinesExcluidos) || [];\n  return (leads || []).filter(\n    (lead) => lead && !lead.is_deleted && !excluded.includes(lead.pipeline_id) && lead.closed_at\n  ).length;\n}\n\n// Regla de decisión compartida por los dos workflows.\nfunction unyxResolveState(active, userId) {\n  if (active.length > 1) return { state: 'multiple_leads', activeLead: null };\n  if (active.length === 1) {\n    return {\n      state: active[0].responsible_user_id === userId ? 'same_agent' : 'other_agent',\n      activeLead: active[0],\n    };\n  }\n  return { state: 'available', activeLead: null };\n}\n\n// =============================================================\n// UNYX · Verificar Cliente — Nodo \"Evaluar Atención\" (workflow: verificar)\n// Determina el estado y arma la respuesta que consume el widget.\n// Requiere las reglas compartidas (_comun.js), que build.js antepone.\n// =============================================================\nconst data = $('Consolidar').first().json;\nconst leads = $('Obtener Leads').first().json?._embedded?.leads ?? [];\n\nconst active = unyxActiveLeads(leads, data);\nconst resolved = unyxResolveState(active, data.userId);\n\nreturn [{\n  json: {\n    ok: true,\n    state: resolved.state,\n    phone: data.phone,\n    contactName: data.contactName,\n    contactCount: data.contactCount,\n    closedLeadCount: unyxClosedCount(leads, data),\n    activeLead: resolved.activeLead,\n    leads: resolved.state === 'multiple_leads' ? active : [],\n  },\n}];"
+        "jsCode": "// =============================================================\n// UNYX · Verificar Cliente — Reglas compartidas\n// Este archivo NO se ejecuta solo: build.js lo antepone a los nodos que\n// evalúan leads, para que la regla de \"atención activa\" viva en un solo lugar.\n//\n// REGLA: un lead está ACTIVO si no tiene closed_at.\n// Kommo marca closed_at cuando el lead se cierra (ganado o perdido) y lo\n// limpia si se reabre. Por eso no hace falta consultar pipelines ni etapas:\n// la regla funciona igual en cualquier cuenta y en cualquier pipeline.\n// =============================================================\n\nfunction unyxIsActive(lead, data) {\n  if (!lead || lead.is_deleted) return false;\n  if (data && (data.pipelinesExcluidos || []).includes(lead.pipeline_id)) return false;\n  return !lead.closed_at;\n}\n\nfunction unyxDecorate(lead, data) {\n  return {\n    id: lead.id,\n    name: lead.name || '#' + lead.id,\n    created_at: lead.created_at || 0,\n    responsible_user_id: lead.responsible_user_id || 0,\n    responsibleName: data.userMap[lead.responsible_user_id] || '',\n    leadUrl: 'https://' + data.subdomain + '.kommo.com/leads/detail/' + lead.id,\n  };\n}\n\n// Devuelve solo las atenciones activas, de la más reciente a la más antigua.\nfunction unyxActiveLeads(leads, data) {\n  return (leads || [])\n    .filter((lead) => unyxIsActive(lead, data))\n    .map((lead) => unyxDecorate(lead, data))\n    .sort((a, b) => b.created_at - a.created_at);\n}\n\nfunction unyxClosedCount(leads, data) {\n  const excluded = (data && data.pipelinesExcluidos) || [];\n  return (leads || []).filter(\n    (lead) => lead && !lead.is_deleted && !excluded.includes(lead.pipeline_id) && lead.closed_at\n  ).length;\n}\n\n// Regla de decisión compartida por los dos workflows.\nfunction unyxResolveState(active, userId) {\n  if (active.length > 1) return { state: 'multiple_leads', activeLead: null };\n  if (active.length === 1) {\n    return {\n      state: active[0].responsible_user_id === userId ? 'same_agent' : 'other_agent',\n      activeLead: active[0],\n    };\n  }\n  return { state: 'available', activeLead: null };\n}\n\n// =============================================================\n// UNYX · Verificar Cliente — Nodo \"Evaluar Atención\" (workflow: verificar)\n// Determina el estado y arma la respuesta que consume el widget.\n// Requiere las reglas compartidas (_comun.js), que build.js antepone.\n// =============================================================\nconst data = $('Consolidar').first().json;\nconst leads = $('Obtener Leads').first().json?._embedded?.leads ?? [];\n\nconst active = unyxActiveLeads(leads, data);\nconst resolved = unyxResolveState(active, data.userId);\n\nreturn [{\n  json: {\n    ok: true,\n    state: resolved.state,\n    phone: data.phone,\n    contactName: data.contactName,\n    contactCount: data.contactCount,\n    closedLeadCount: unyxClosedCount(leads, data),\n    activeLead: resolved.activeLead,\n    leads: resolved.state === 'multiple_leads' ? active : [],\n  },\n}];"
       },
       "id": "b620044b-a716-43d0-a8ac-bc5c01297d33",
       "name": "Evaluar Atención",
@@ -354,8 +366,8 @@
       },
       "type": "n8n-nodes-base.stickyNote",
       "position": [
-        1792,
-        800
+        1920,
+        880
       ],
       "typeVersion": 1,
       "id": "ded2e502-9143-4ec7-b455-57ab72cad5f9",
@@ -545,7 +557,7 @@
     "executionOrder": "v1",
     "binaryMode": "separate"
   },
-  "versionId": "6359709e-c9e9-462d-b64a-16120dd1dc79",
+  "versionId": "7d5a874b-5707-4bfb-b60e-e2fb6ac1ab10",
   "meta": {
     "instanceId": "e6ed2619c97de62ff0de8886ebe0c22aed325375b3b9a3c4b1a4e4dab3199a78"
   },

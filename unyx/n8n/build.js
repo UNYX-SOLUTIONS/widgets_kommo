@@ -216,7 +216,13 @@ function cadena(cliente, codigo) {
     ifNode('¿Tiene Leads?', 'unyx-' + codigo + '-tiene-leads', [1760, 180], IF_HAS_LEADS),
     httpNode(cliente, 'Obtener Leads', 'unyx-' + codigo + '-leads', [1980, 80], {
       method: 'GET',
-      url: KOMMO_HOST(cliente.subdominio) + '/api/v4/leads?limit=250&{{ $json.leadIds.map((id) => "filter[id][]=" + id).join("&") }}',
+      // El '=' inicial es obligatorio: sin él n8n manda la expresión como texto
+      // literal, Kommo ignora el filtro y devuelve los primeros 250 leads de la
+      // cuenta en vez de los leads de este contacto.
+      url:
+        '=' +
+        KOMMO_HOST(cliente.subdominio) +
+        '/api/v4/leads?limit=250&{{ $json.leadIds.map((id) => "filter[id][]=" + id).join("&") }}',
     }),
     codeNode(
       'Evaluar Atención',

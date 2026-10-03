@@ -129,7 +129,7 @@
       "parameters": {
         "url": "https://unyx.kommo.com/api/v4/contacts",
         "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
+        "genericAuthType": "httpBearerAuth",
         "sendQuery": true,
         "queryParameters": {
           "parameters": [
@@ -167,6 +167,10 @@
         "httpHeaderAuth": {
           "id": "fRLOGrD5I32LciFR",
           "name": "Unyx-Credential-widget"
+        },
+        "httpBearerAuth": {
+          "id": "pOQ04JPJgisDEMGi",
+          "name": "Unyx-Credential-widget"
         }
       }
     },
@@ -187,7 +191,7 @@
       "parameters": {
         "url": "https://unyx.kommo.com/api/v4/users",
         "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
+        "genericAuthType": "httpBearerAuth",
         "sendQuery": true,
         "queryParameters": {
           "parameters": [
@@ -217,6 +221,10 @@
       "credentials": {
         "httpHeaderAuth": {
           "id": "fRLOGrD5I32LciFR",
+          "name": "Unyx-Credential-widget"
+        },
+        "httpBearerAuth": {
+          "id": "pOQ04JPJgisDEMGi",
           "name": "Unyx-Credential-widget"
         }
       },
@@ -271,9 +279,9 @@
     },
     {
       "parameters": {
-        "url": "https://unyx.kommo.com/api/v4/leads?limit=250&{{ $json.leadIds.map((id) => \"filter[id][]=\" + id).join(\"&\") }}",
+        "url": "=https://unyx.kommo.com/api/v4/leads?limit=250&{{ $json.leadIds.map((id) => \"filter[id][]=\" + id).join(\"&\") }}",
         "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
+        "genericAuthType": "httpBearerAuth",
         "options": {
           "response": {
             "response": {
@@ -294,12 +302,16 @@
         "httpHeaderAuth": {
           "id": "fRLOGrD5I32LciFR",
           "name": "Unyx-Credential-widget"
+        },
+        "httpBearerAuth": {
+          "id": "pOQ04JPJgisDEMGi",
+          "name": "Unyx-Credential-widget"
         }
       }
     },
     {
       "parameters": {
-        "jsCode": "// =============================================================\n// UNYX · Verificar Cliente — Reglas compartidas\n// Este archivo NO se ejecuta solo: build.js lo antepone a los nodos que\n// evalúan leads, para que la regla de \"atención activa\" viva en un solo lugar.\n//\n// REGLA: un lead está ACTIVO si no tiene closed_at.\n// Kommo marca closed_at cuando el lead se cierra (ganado o perdido) y lo\n// limpia si se reabre. Por eso no hace falta consultar pipelines ni etapas:\n// la regla funciona igual en cualquier cuenta y en cualquier pipeline.\n// =============================================================\n\nfunction unyxIsActive(lead, data) {\n  if (!lead || lead.is_deleted) return false;\n  if (data && (data.pipelinesExcluidos || []).includes(lead.pipeline_id)) return false;\n  return !lead.closed_at;\n}\n\nfunction unyxDecorate(lead, data) {\n  return {\n    id: lead.id,\n    name: lead.name || '#' + lead.id,\n    created_at: lead.created_at || 0,\n    responsible_user_id: lead.responsible_user_id || 0,\n    responsibleName: data.userMap[lead.responsible_user_id] || '',\n    leadUrl: 'https://' + data.subdomain + '.kommo.com/leads/' + lead.id,\n  };\n}\n\n// Devuelve solo las atenciones activas, de la más reciente a la más antigua.\nfunction unyxActiveLeads(leads, data) {\n  return (leads || [])\n    .filter((lead) => unyxIsActive(lead, data))\n    .map((lead) => unyxDecorate(lead, data))\n    .sort((a, b) => b.created_at - a.created_at);\n}\n\nfunction unyxClosedCount(leads, data) {\n  const excluded = (data && data.pipelinesExcluidos) || [];\n  return (leads || []).filter(\n    (lead) => lead && !lead.is_deleted && !excluded.includes(lead.pipeline_id) && lead.closed_at\n  ).length;\n}\n\n// Regla de decisión compartida por los dos workflows.\nfunction unyxResolveState(active, userId) {\n  if (active.length > 1) return { state: 'multiple_leads', activeLead: null };\n  if (active.length === 1) {\n    return {\n      state: active[0].responsible_user_id === userId ? 'same_agent' : 'other_agent',\n      activeLead: active[0],\n    };\n  }\n  return { state: 'available', activeLead: null };\n}\n\n// =============================================================\n// UNYX · Crear Lead — Nodo \"Evaluar Atención\" (workflow: crear)\n// RE-VALIDACIÓN: justo antes de crear el lead se vuelve a calcular el estado\n// con datos frescos. Devuelve además el contacto a reutilizar y el nombre\n// del lead, para que el nodo de creación no tenga que recalcular nada.\n// =============================================================\nconst data = $('Consolidar').first().json;\n\nlet leads = [];\ntry {\n  leads = $('Obtener Leads').first().json?._embedded?.leads ?? [];\n} catch (error) {\n  leads = [];\n}\n\nconst active = unyxActiveLeads(leads, data);\nconst resolved = unyxResolveState(active, data.userId);\nconst contact = data.contacts?.[0] ?? null;\n\nreturn [{\n  json: {\n    ok: true,\n    state: resolved.state,\n    phone: data.phone,\n    userId: data.userId,\n    userName: data.userName,\n    contactId: contact ? contact.id : null,\n    contactName: data.contactName,\n    contactCount: data.contactCount,\n    activeLead: resolved.activeLead,\n    leads: resolved.state === 'multiple_leads' ? active : [],\n    leadName: data.contactName ? data.contactName + ' · ' + data.phone : data.phone,\n  },\n}];"
+        "jsCode": "// =============================================================\n// UNYX · Verificar Cliente — Reglas compartidas\n// Este archivo NO se ejecuta solo: build.js lo antepone a los nodos que\n// evalúan leads, para que la regla de \"atención activa\" viva en un solo lugar.\n//\n// REGLA: un lead está ACTIVO si no tiene closed_at.\n// Kommo marca closed_at cuando el lead se cierra (ganado o perdido) y lo\n// limpia si se reabre. Por eso no hace falta consultar pipelines ni etapas:\n// la regla funciona igual en cualquier cuenta y en cualquier pipeline.\n// =============================================================\n\nfunction unyxIsActive(lead, data) {\n  if (!lead || lead.is_deleted) return false;\n  if (data && (data.pipelinesExcluidos || []).includes(lead.pipeline_id)) return false;\n  return !lead.closed_at;\n}\n\nfunction unyxDecorate(lead, data) {\n  return {\n    id: lead.id,\n    name: lead.name || '#' + lead.id,\n    created_at: lead.created_at || 0,\n    responsible_user_id: lead.responsible_user_id || 0,\n    responsibleName: data.userMap[lead.responsible_user_id] || '',\n    leadUrl: 'https://' + data.subdomain + '.kommo.com/leads/detail/' + lead.id,\n  };\n}\n\n// Devuelve solo las atenciones activas, de la más reciente a la más antigua.\nfunction unyxActiveLeads(leads, data) {\n  return (leads || [])\n    .filter((lead) => unyxIsActive(lead, data))\n    .map((lead) => unyxDecorate(lead, data))\n    .sort((a, b) => b.created_at - a.created_at);\n}\n\nfunction unyxClosedCount(leads, data) {\n  const excluded = (data && data.pipelinesExcluidos) || [];\n  return (leads || []).filter(\n    (lead) => lead && !lead.is_deleted && !excluded.includes(lead.pipeline_id) && lead.closed_at\n  ).length;\n}\n\n// Regla de decisión compartida por los dos workflows.\nfunction unyxResolveState(active, userId) {\n  if (active.length > 1) return { state: 'multiple_leads', activeLead: null };\n  if (active.length === 1) {\n    return {\n      state: active[0].responsible_user_id === userId ? 'same_agent' : 'other_agent',\n      activeLead: active[0],\n    };\n  }\n  return { state: 'available', activeLead: null };\n}\n\n// =============================================================\n// UNYX · Crear Lead — Nodo \"Evaluar Atención\" (workflow: crear)\n// RE-VALIDACIÓN: justo antes de crear el lead se vuelve a calcular el estado\n// con datos frescos. Devuelve además el contacto a reutilizar y el nombre\n// del lead, para que el nodo de creación no tenga que recalcular nada.\n// =============================================================\nconst data = $('Consolidar').first().json;\n\nlet leads = [];\ntry {\n  leads = $('Obtener Leads').first().json?._embedded?.leads ?? [];\n} catch (error) {\n  leads = [];\n}\n\nconst active = unyxActiveLeads(leads, data);\nconst resolved = unyxResolveState(active, data.userId);\nconst contact = data.contacts?.[0] ?? null;\n\nreturn [{\n  json: {\n    ok: true,\n    state: resolved.state,\n    phone: data.phone,\n    userId: data.userId,\n    userName: data.userName,\n    contactId: contact ? contact.id : null,\n    contactName: data.contactName,\n    contactCount: data.contactCount,\n    activeLead: resolved.activeLead,\n    leads: resolved.state === 'multiple_leads' ? active : [],\n    leadName: data.contactName ? data.contactName + ' · ' + data.phone : data.phone,\n  },\n}];"
       },
       "id": "72594008-473d-4217-84d8-251cde099d60",
       "name": "Evaluar Atención",
@@ -406,7 +418,7 @@
       "parameters": {
         "url": "https://unyx.kommo.com/api/v4/contacts/custom_fields",
         "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
+        "genericAuthType": "httpBearerAuth",
         "sendQuery": true,
         "queryParameters": {
           "parameters": [
@@ -436,6 +448,10 @@
         "httpHeaderAuth": {
           "id": "fRLOGrD5I32LciFR",
           "name": "Unyx-Credential-widget"
+        },
+        "httpBearerAuth": {
+          "id": "pOQ04JPJgisDEMGi",
+          "name": "Unyx-Credential-widget"
         }
       }
     },
@@ -444,7 +460,7 @@
         "method": "POST",
         "url": "https://unyx.kommo.com/api/v4/contacts",
         "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
+        "genericAuthType": "httpBearerAuth",
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify([{ name: ($('Evaluar Atención').first().json.contactName || $('Evaluar Atención').first().json.phone), responsible_user_id: $('Evaluar Atención').first().json.userId, created_by: $('Evaluar Atención').first().json.userId, custom_fields_values: [{ field_id: (($json._embedded && $json._embedded.custom_fields ? $json._embedded.custom_fields : []).find((f) => String(f.code || \"\").toUpperCase() === \"PHONE\") || {}).id, values: [{ value: $('Evaluar Atención').first().json.phone, enum_code: \"WORK\" }] }] }]) }}",
@@ -468,6 +484,10 @@
         "httpHeaderAuth": {
           "id": "fRLOGrD5I32LciFR",
           "name": "Unyx-Credential-widget"
+        },
+        "httpBearerAuth": {
+          "id": "pOQ04JPJgisDEMGi",
+          "name": "Unyx-Credential-widget"
         }
       }
     },
@@ -489,7 +509,7 @@
         "method": "POST",
         "url": "https://unyx.kommo.com/api/v4/leads",
         "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
+        "genericAuthType": "httpBearerAuth",
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify([{ name: $json.leadName, responsible_user_id: $json.userId, created_by: $json.userId, updated_by: $json.userId, _embedded: { contacts: [{ id: $json.contactId, is_main: true }] } }]) }}",
@@ -513,12 +533,16 @@
         "httpHeaderAuth": {
           "id": "fRLOGrD5I32LciFR",
           "name": "Unyx-Credential-widget"
+        },
+        "httpBearerAuth": {
+          "id": "pOQ04JPJgisDEMGi",
+          "name": "Unyx-Credential-widget"
         }
       }
     },
     {
       "parameters": {
-        "jsCode": "// =============================================================\n// UNYX · Verificar Cliente — Nodo \"Resultado\"\n// Arma la respuesta final del widget con el lead creado.\n// =============================================================\nconst created = $json?._embedded?.leads?.[0];\nconst base = $('Evaluar Atención').first().json;\n\nreturn [{\n  json: {\n    ok: true,\n    leadId: created?.id ?? null,\n    leadName: base.leadName,\n    contactId: base.contactId,\n    leadUrl: 'https://unyx.kommo.com/leads/' + (created?.id ?? ''),\n  },\n}];"
+        "jsCode": "// =============================================================\n// UNYX · Verificar Cliente — Nodo \"Resultado\"\n// Arma la respuesta final del widget con el lead creado.\n// =============================================================\nconst created = $json?._embedded?.leads?.[0];\nconst base = $('Evaluar Atención').first().json;\n\nreturn [{\n  json: {\n    ok: true,\n    leadId: created?.id ?? null,\n    leadName: base.leadName,\n    contactId: base.contactId,\n    leadUrl: 'https://unyx.kommo.com/leads/detail/' + (created?.id ?? ''),\n  },\n}];"
       },
       "id": "12fc39c5-b244-4884-9d3c-38a84ec383eb",
       "name": "Resultado",
@@ -549,8 +573,8 @@
       },
       "type": "n8n-nodes-base.stickyNote",
       "position": [
-        4400,
-        640
+        4560,
+        528
       ],
       "typeVersion": 1,
       "id": "60f979ad-1d69-4b28-9827-a5f2a10e0b18",
@@ -831,7 +855,7 @@
     "executionOrder": "v1",
     "binaryMode": "separate"
   },
-  "versionId": "e08d5c34-e0e9-4fc1-a1f5-170d155e2003",
+  "versionId": "60fb099c-7577-45d7-8b2a-850764f66389",
   "meta": {
     "instanceId": "e6ed2619c97de62ff0de8886ebe0c22aed325375b3b9a3c4b1a4e4dab3199a78"
   },

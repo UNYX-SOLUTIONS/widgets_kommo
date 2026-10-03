@@ -6,9 +6,9 @@
       "subdominio": "unyx",
       "tokenWidget": "PEGAR_TOKEN_UNYX",
       "credencial": {
-        "id": "PEGAR_ID_CREDENCIAL_UNYX",
-        "name": "Kommo UNYX Token",
-        "tipo": "httpHeaderAuth"
+        "id": "pOQ04JPJgisDEMGi",
+        "name": "Unyx-Credential-widget",
+        "tipo": "httpBearerAuth"
       },
       "pipelinesExcluidos": []
     }

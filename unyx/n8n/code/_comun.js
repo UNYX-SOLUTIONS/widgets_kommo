@@ -22,7 +22,7 @@ function unyxDecorate(lead, data) {
     created_at: lead.created_at || 0,
     responsible_user_id: lead.responsible_user_id || 0,
     responsibleName: data.userMap[lead.responsible_user_id] || '',
-    leadUrl: 'https://' + data.subdomain + '.kommo.com/leads/' + lead.id,
+    leadUrl: 'https://' + data.subdomain + '.kommo.com/leads/detail/' + lead.id,
   };
 }
 

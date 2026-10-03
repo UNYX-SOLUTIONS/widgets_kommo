@@ -179,6 +179,37 @@ for (const workflow of [verificar, crear]) {
     })()
   );
   check(workflow.name + ': no quedan placeholders de nodo sin resolver', !JSON.stringify(workflow).includes('__N_'));
+
+  // En n8n, un campo con {{ }} solo se evalúa si empieza por '='. Sin ese
+  // prefijo se envía como texto literal: pasó con la URL de Obtener Leads, que
+  // mandaba el filtro sin construir y traía los primeros 250 leads de la cuenta.
+  const sinPrefijo = [];
+  for (const node of workflow.nodes) {
+    if (node.type === 'n8n-nodes-base.stickyNote') continue;
+    const revisar = (valor, ruta) => {
+      if (typeof valor === 'string' && valor.includes('{{') && !valor.startsWith('=')) {
+        sinPrefijo.push(node.name + ' → ' + ruta);
+      } else if (valor && typeof valor === 'object') {
+        Object.keys(valor).forEach((clave) => revisar(valor[clave], ruta + '.' + clave));
+      }
+    };
+    revisar(node.parameters, 'parameters');
+  }
+  check(
+    workflow.name + ': toda expresión {{ }} empieza por "="',
+    sinPrefijo.length === 0,
+    sinPrefijo.slice(0, 4).join(' | ')
+  );
+
+  const leadsNode = workflow.nodes.find((node) => node.name === 'Obtener Leads');
+  check(
+    workflow.name + ': Obtener Leads filtra por los ids del contacto',
+    Boolean(leadsNode) &&
+      leadsNode.parameters.url.startsWith('=') &&
+      leadsNode.parameters.url.includes('filter[id][]=') &&
+      leadsNode.parameters.url.includes('$json.leadIds'),
+    leadsNode ? leadsNode.parameters.url.slice(0, 70) + '…' : 'sin nodo'
+  );
 }
 
 // =============================================================
@@ -304,7 +335,7 @@ check(
 );
 const mio = evaluarVerificar([{ id: 12, name: 'Mío', responsible_user_id: 77, created_at: 100, closed_at: null }], 77);
 check('evaluar: lead propio -> same_agent', mio.state === 'same_agent', JSON.stringify(mio));
-check('evaluar: arma la URL con el subdominio del cliente', mio.activeLead.leadUrl === 'https://unyx.kommo.com/leads/12', mio.activeLead.leadUrl);
+check('evaluar: arma la URL con el subdominio del cliente', mio.activeLead.leadUrl === 'https://unyx.kommo.com/leads/detail/12', mio.activeLead.leadUrl);
 const ajeno = evaluarVerificar([{ id: 13, name: 'Ajeno', responsible_user_id: 88, created_at: 100, closed_at: null }], 77);
 check('evaluar: lead de otro -> other_agent', ajeno.state === 'other_agent', JSON.stringify(ajeno));
 check('evaluar: resuelve el nombre del asesor', ajeno.activeLead.responsibleName === 'Otra Asesora');
@@ -372,7 +403,7 @@ const cuerpoCreado = run(snippetOf(crear, 'Resultado'), {
   json: { _embedded: { leads: [{ id: 4321 }] } },
   nodes: { 'Evaluar Atención': [{ json: { leadName: 'X · +593991234567', contactId: 501 } }] },
 })[0].json;
-check('resultado: devuelve el lead con la URL del cliente', cuerpoCreado.leadId === 4321 && cuerpoCreado.leadUrl === 'https://unyx.kommo.com/leads/4321', JSON.stringify(cuerpoCreado));
+check('resultado: devuelve el lead con la URL del cliente', cuerpoCreado.leadId === 4321 && cuerpoCreado.leadUrl === 'https://unyx.kommo.com/leads/detail/4321', JSON.stringify(cuerpoCreado));
 
 check('inválido: responde ok:false', run(snippetOf(crear, 'Teléfono Inválido'), { json: {} })[0].json.ok === false);
 
@@ -425,8 +456,15 @@ check(
 check('contexto: tiene respaldo en APP.data', /APP && APP\.data/.test(js) && /app\.user_id/.test(js));
 check('contexto: el subdominio cae al hostname de Kommo', /\.kommo\\?\.com\$\/i\.test\(location\.hostname\)/.test(js));
 check('contexto: no pisa con vacío un valor ya resuelto', /if \(context\.account\) account = context\.account;/.test(js) && /if \(context\.userId(?: > 0)?\) userId = context\.userId;/.test(js));
-check('contexto: registra el contexto sin exponer secretos', /\[UNYX\] Contexto detectado/.test(js) && !/console\.log\([^)]*(token|sharedToken|secreto)/i.test(js));
-check('contexto: no hay console.log fuera del diagnóstico', (js.match(/console\.log/g) || []).length === 1, (js.match(/console\.log/g) || []).length + ' llamadas');
+check('contexto: registra el contexto sin exponer secretos', /\[UNYX\] Contexto detectado/.test(js) && !/console\.(log|warn)\([^)]*(token|sharedToken|secreto)/i.test(js));
+check(
+  'contexto: solo hay logs de diagnóstico',
+  (js.match(/console\.(log|warn)/g) || []).length === 2,
+  (js.match(/console\.(log|warn)/g) || []).length + ' llamadas'
+);
+check('contexto: usa la constante documentada APP.constant("user")', /APP\.constant\("user"\)/.test(js) && /usuarioConstante\.id/.test(js));
+check('contexto: el subdominio también puede venir de APP.constant("account")', /cuentaConstante\.subdomain/.test(js));
+check('contexto: avisa por consola si no encuentra asesor', /Sin asesor\. Diagnóstico/.test(js));
 
 // --- Hoja de estilos: se resuelve también en init() ---
 check('css: el <link> lleva data-unyx para poder re-resolverlo', /<link rel="stylesheet" data-unyx="style"/.test(widgetScript));

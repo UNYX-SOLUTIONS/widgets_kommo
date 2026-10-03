@@ -11,6 +11,6 @@ return [{
     leadId: created?.id ?? null,
     leadName: base.leadName,
     contactId: base.contactId,
-    leadUrl: 'https://__SUBDOMINIO__.kommo.com/leads/' + (created?.id ?? ''),
+    leadUrl: 'https://__SUBDOMINIO__.kommo.com/leads/detail/' + (created?.id ?? ''),
   },
 }];
