@@ -1,0 +1,1 @@
+/^\+?\d{7,15}$/.test(String($json.body && $json.body.phone || "").replace(/[\s\-()]/g, ""))

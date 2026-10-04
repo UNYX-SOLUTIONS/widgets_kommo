@@ -167,7 +167,10 @@ function ifAutorizado(cliente) {
   );
 }
 
-const IF_PHONE = '/^(?:\\+?593)?0?9\\d{8}$/.test(String($json.body && $json.body.phone || "").replace(/[\\s\\-()]/g, ""))';
+// La forma del teléfono vive en code/if-telefono.txt para que build.js y el
+// patcher compartan la misma: acepta números internacionales, y la validación
+// por país la hace después "Preparar Consultas".
+const IF_PHONE = read('if-telefono.txt');
 const IF_HAS_LEADS = '$json.leadIds.length > 0';
 
 /**

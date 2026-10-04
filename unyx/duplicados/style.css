@@ -94,13 +94,18 @@
 }
 
 .unyx-widget .unyx-prefix {
-  display: flex;
-  align-items: center;
-  padding: 0 11px;
+  flex: 0 0 auto;
+  align-self: stretch;
+  max-width: 92px;
+  padding: 0 4px;
+  border: 0;
   border-right: 1px solid #d5dae0;
   background: #f2f4f7 !important;
   color: #2E3640 !important;
-  font: 600 12px ui-monospace, monospace;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 650;
+  cursor: pointer;
 }
 
 .unyx-widget .unyx-phone input {

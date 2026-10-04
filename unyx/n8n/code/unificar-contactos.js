@@ -1,22 +1,28 @@
 // =============================================================
 // UNYX · Verificar Cliente — Nodo "Unificar Contactos"
 // Recibe la respuesta de cada variante, deduplica por id y descarta los
-// contactos cuyo teléfono no coincide exactamente con el buscado.
+// contactos cuyo teléfono no coincide con el buscado.
 // Recoge también los ids de los leads enlazados (with=leads).
+//
+// La comparación es por dígitos y admite las formas habituales de guardar un
+// número: la parte nacional, con 0 inicial, o con su código de país delante.
 // =============================================================
 const first = $('__N_PREPARAR__').first().json;
 const target = first.local;
+const full = String(first.country || '') + target;
 
 function digitsOf(value) {
   return String(value === null || value === undefined ? '' : value).replace(/\D/g, '');
 }
 
 function phonesMatch(value) {
-  let candidate = digitsOf(value);
-  if (!candidate || candidate.length < 7 || candidate.length > 15) return false;
-  if (candidate.startsWith('593')) candidate = candidate.slice(3);
-  if (candidate.startsWith('0')) candidate = candidate.slice(1);
-  return candidate === target;
+  const candidate = digitsOf(value);
+  if (!candidate || candidate.length < 6 || candidate.length > 15) return false;
+  if (candidate === target) return true;
+  if (candidate === '0' + target) return true;
+  if (candidate === full) return true;
+  // El código de país delante (1 a 3 dígitos: +1, +57, +593).
+  return candidate.endsWith(target) && candidate.length - target.length <= 3;
 }
 
 const contactsById = new Map();
@@ -47,6 +53,7 @@ for (const contact of contacts) {
 return [{
   json: {
     phone: first.phone,
+    country: first.country,
     userId: first.userId,
     userName: first.userName,
     contactCount: contacts.length,

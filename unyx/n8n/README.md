@@ -52,8 +52,11 @@ body.account === <subdominio>
   escribir en la cuenta equivocada.
 - Todo ocurre **antes** de cualquier llamada a la API de Kommo.
 
-`Teléfono Válido` exige 9 dígitos de celular ecuatoriano, para no reventar con un
-teléfono mal formado.
+`Teléfono Válido` solo comprueba la **forma** del número (de 7 a 15 dígitos, con o
+sin `+`), para que un venezolano o un brasileño no se descarte antes de consultar.
+La regla por país vive en `Preparar Consultas`: Ecuador exige sus 9 dígitos de
+celular y el resto admite de 6 a 12. La expresión del IF está en
+`code/if-telefono.txt`, compartida por `build.js` y el patcher.
 
 ---
 
@@ -264,12 +267,17 @@ Estados que devuelve la consulta: `available`, `same_agent`, `other_agent`,
 Límites usados: `contacts` 250, `leads` 250, `users` 250.
 
 - **3 consultas de contactos**: una por cada forma habitual del número
-  (`991234567`, `0991234567`, `+593991234567`), con comparación exacta después en
+  (`963925815`, `0963925815`, `593963925815`), con comparación exacta después en
   JS. Es deliberado: si la búsqueda de Kommo no fuera por subcadena, una sola
   consulta perdería contactos guardados con otro formato, y un falso
-  «disponible» es exactamente el duplicado que el widget debe evitar. Si se
-  confirma que la búsqueda es por subcadena, se puede bajar a una sola consulta
-  editando `code/preparar-consultas.js`.
+  «disponible» es exactamente el duplicado que el widget debe evitar.
+- **Teléfonos internacionales**: el widget envía `phone` en formato E.164
+  (`+573001234567`) y `country` con el código de país aparte, así que la parte
+  nacional se calcula sin adivinar. La comparación contra lo guardado en Kommo
+  acepta la parte nacional, con `0` inicial, o con el código de país delante
+  (1 a 3 dígitos). Si `country` no viene (widget anterior), se asume Ecuador, así
+  que **n8n y el widget se pueden actualizar en cualquier orden sin romper
+  Ecuador**; para números de otros países sí hace falta el widget nuevo.
 - **Sin paginación**: ninguna lista pagina. Con más de 250 coincidencias, o más
   de 250 leads enlazados a un contacto, la consulta se trunca en silencio.
 - **Nombres de asesores**: `GET /users` requiere permisos de administrador. El

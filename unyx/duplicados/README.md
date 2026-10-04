@@ -1,8 +1,10 @@
 # UNYX · Verificar Cliente — widget de Kommo
 
-Integración **privada** de Kommo. El asesor ingresa un celular ecuatoriano
-(`+593` + 9 dígitos) y el widget comprueba si el cliente ya tiene una atención
-activa antes de permitir crear un lead.
+Integración **privada** de Kommo. El asesor elige el país y escribe el número de
+teléfono; el widget comprueba si el cliente ya tiene una atención activa antes de
+permitir crear un lead. Ecuador viene seleccionado por defecto y conserva su
+validación de celular; la lista incluye el resto de Latinoamérica, EE. UU.,
+Canadá y varios países de Europa.
 
 Se muestra como panel lateral en la ficha de contacto (`ccard-1`) y en
 cualquier lead (`lcard-1`).

@@ -240,17 +240,68 @@ check('autorizado: el mensaje de denegación no revela el token', !run(snippetOf
 // 4. Lógica de los nodos
 // =============================================================
 
+// --- El IF del teléfono acepta números internacionales ---
+// Antes exigía 9 dígitos ecuatorianos, así que descartaba un venezolano o un
+// brasileño antes de llegar a la consulta. La regla por país vive en
+// "Preparar Consultas"; aquí solo se comprueba la forma del número.
+const ifTelefonoNode = verificar.nodes.find((x) => x.name === 'Teléfono Válido');
+const ifTelefonoExpr = ifTelefonoNode.parameters.conditions.conditions[0].leftValue
+  .replace(/^=/, '').replace(/^\{\{/, '').replace(/\}\}$/, '').trim();
+const telefonoOk = new Function('$json', 'return (' + ifTelefonoExpr + ');');
+
+for (const [nombre, phone, esperado] of [
+  ['Ecuador +593963925815', '+593963925815', true],
+  ['Ecuador nacional', '963925815', true],
+  ['Venezuela +584241711888', '+584241711888', true],
+  ['Brasil +552498122273', '+552498122273', true],
+  ['EE.UU. +12125550199', '+12125550199', true],
+  ['con espacios', '+58 424 171 1888', true],
+  ['con guiones', '+55-24-9812-2273', true],
+  ['texto', 'abc', false],
+  ['demasiado corto', '+123', false],
+  ['vacío', '', false],
+  ['sin teléfono', undefined, false],
+]) {
+  check('IF teléfono: ' + nombre, telefonoOk({ body: { phone } }) === esperado, String(phone));
+}
+
+const cuerpoInvalido = run(snippetOf(crear, 'Teléfono Inválido'), { json: {} })[0].json;
+check('IF teléfono: el mensaje de rechazo es genérico', /número de teléfono válido/i.test(cuerpoInvalido.message), cuerpoInvalido.message);
+
 const preparar = snippetOf(verificar, 'Preparar Consultas');
 check('preparar: acepta 991234567', run(preparar, { json: { body: { phone: '991234567', userId: '77' } } })[0].json.phone === '+593991234567');
 const variantes = run(preparar, { json: { body: { phone: '0991234567', userId: 77, userName: 'Ana' } } });
 check('preparar: genera 3 variantes', variantes.length === 3, JSON.stringify(variantes.map((i) => i.json.variant)));
-check('preparar: variantes correctas', JSON.stringify(variantes.map((i) => i.json.variant)) === JSON.stringify(['991234567', '0991234567', '+593991234567']));
+check('preparar: variantes correctas', JSON.stringify(variantes.map((i) => i.json.variant)) === JSON.stringify(['991234567', '0991234567', '593991234567']), JSON.stringify(variantes.map((i) => i.json.variant)));
+check(
+  'preparar: identifica el país cuando el widget lo manda',
+  run(preparar, { json: { body: { phone: '+573001234567', country: '57', userId: 1 } } })[0].json.local === '3001234567'
+);
+check(
+  'preparar: admite número internacional',
+  run(preparar, { json: { body: { phone: '+12125550199', country: '1', userId: 1 } } })[0].json.phone === '+12125550199'
+);
+check(
+  'preparar: el widget nuevo manda el teléfono con +',
+  variantes[0].json.phone.startsWith('+593')
+);
 check('preparar: conserva el asesor', variantes[0].json.userId === 77 && variantes[0].json.userName === 'Ana');
 check(
-  'preparar: rechaza un fijo',
+  'preparar: rechaza un fijo de Ecuador',
   (() => {
     try {
-      run(preparar, { json: { body: { phone: '022345678' } } });
+      run(preparar, { json: { body: { phone: '022345678', country: '593' } } });
+      return false;
+    } catch (error) {
+      return true;
+    }
+  })()
+);
+check(
+  'preparar: rechaza un número demasiado corto',
+  (() => {
+    try {
+      run(preparar, { json: { body: { phone: '+5730012', country: '57' } } });
       return false;
     } catch (error) {
       return true;
@@ -294,6 +345,39 @@ check('unificar: deduplica por id', unificado.contactCount === 2, unificado.cont
 check('unificar: descarta teléfonos que no coinciden', !unificado.contactIds.includes(503));
 check('unificar: junta los leads de todos los contactos', JSON.stringify(unificado.leadIds) === JSON.stringify([900, 901, 902]));
 check('unificar: toma el nombre del primer contacto', unificado.contactName === 'María Zambrano');
+
+// El teléfono es internacional: se comprueban las formas habituales de guardar
+// un número en Kommo para Ecuador, Colombia y Estados Unidos, y que no haya
+// falsos positivos entre países distintos.
+function contarContactos(guardado, local, country) {
+  const contactos = [{
+    id: 900,
+    name: 'Prueba',
+    custom_fields_values: [{ field_id: 1, values: [{ value: guardado }] }],
+    _embedded: { leads: [] },
+  }];
+  return run(unificar, {
+    json: {},
+    nodes: { 'Preparar Consultas': [{ json: { local, country, phone: '+' + country + local, userId: 1 } }] },
+    input: [{ json: { _embedded: { contacts: contactos } } }],
+  })[0].json.contactCount;
+}
+
+for (const [nombre, guardado, local, country, esperado] of [
+  ['EC guardado sin 0', '963925815', '963925815', '593', 1],
+  ['EC guardado con 0', '0963925815', '963925815', '593', 1],
+  ['EC guardado con 593', '593963925815', '963925815', '593', 1],
+  ['EC guardado con +593', '+593963925815', '963925815', '593', 1],
+  ['EC guardado con espacios', '096 392 5815', '963925815', '593', 1],
+  ['CO guardado nacional', '3001234567', '3001234567', '57', 1],
+  ['CO guardado con +57', '+573001234567', '3001234567', '57', 1],
+  ['US guardado con +1', '+1 212 555 0199', '2125550199', '1', 1],
+  ['otro número no coincide', '999888777', '963925815', '593', 0],
+  ['número parecido no coincide', '963925814', '963925815', '593', 0],
+  ['CO buscado, guardado EC', '+593963925815', '3001234567', '57', 0],
+]) {
+  check('unificar internacional: ' + nombre, contarContactos(guardado, local, country) === esperado, guardado);
+}
 
 const consolidar = snippetOf(verificar, 'Consolidar');
 const consolidado = run(consolidar, {

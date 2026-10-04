@@ -64,6 +64,69 @@ define(["jquery"], function () {
 
     var boundEl = null;
 
+    // Códigos de país del selector. El primero sale seleccionado.
+    // Para agregar uno: añade ["ISO", "código"] a esta lista.
+    var PAISES = [
+      ["EC", "593"],
+      ["CO", "57"],
+      ["PE", "51"],
+      ["CL", "56"],
+      ["AR", "54"],
+      ["MX", "52"],
+      ["US", "1"],
+      ["ES", "34"],
+      ["PA", "507"],
+      ["VE", "58"],
+      ["BR", "55"],
+      ["BO", "591"],
+      ["UY", "598"],
+      ["PY", "595"],
+      ["CR", "506"],
+      ["GT", "502"],
+      ["SV", "503"],
+      ["HN", "504"],
+      ["NI", "505"],
+      ["CN", "86"],
+      ["IT", "39"],
+      ["FR", "33"],
+      ["DE", "49"],
+      ["GB", "44"],
+    ];
+
+    var MAX_DIGITOS = 12;
+
+    function opcionesPais() {
+      return PAISES.map(function (pais) {
+        return (
+          '<option value="' +
+          pais[1] +
+          '">' +
+          pais[0] +
+          " +" +
+          pais[1] +
+          "</option>"
+        );
+      }).join("");
+    }
+
+    function paisSeleccionado() {
+      var select = el("country");
+
+      return select && select.value ? String(select.value) : "593";
+    }
+
+    function maxDigitos(pais) {
+      return pais === "593" ? 9 : MAX_DIGITOS;
+    }
+
+    // Ecuador conserva su regla de celular (9 dígitos empezando por 9);
+    // el resto acepta de 6 a 12 dígitos.
+    function numeroValido(pais, digitos) {
+      if (pais === "593") return /^9\d{8}$/.test(digitos);
+
+      return /^\d{6,12}$/.test(digitos);
+    }
+
     function t(key, fallback) {
       return typeof ui[key] === "string" && ui[key].length
         ? ui[key]
@@ -155,7 +218,11 @@ define(["jquery"], function () {
 
         '      <div class="unyx-phone">',
 
-        '        <span class="unyx-prefix">' + esc(t("prefix")) + "</span>",
+        '        <select class="unyx-prefix" data-unyx="country" aria-label="' +
+          esc(t("countryLabel")) +
+          '">' +
+          opcionesPais() +
+          "</select>",
 
         '        <input id="' +
           instanceId +
@@ -446,7 +513,9 @@ define(["jquery"], function () {
 
       var error = el("phone-error");
 
-      if (!/^9\d{8}$/.test(phone)) {
+      var pais = paisSeleccionado();
+
+      if (!numeroValido(pais, phone)) {
         input.setAttribute("aria-invalid", "true");
 
         error.textContent = t("phoneInvalid");
@@ -487,7 +556,9 @@ define(["jquery"], function () {
       setBusy(true);
 
       post(CHECK_PATH, {
-        phone: "+593" + phone,
+        phone: "+" + pais + phone,
+
+        country: pais,
 
         account: account,
 
@@ -526,6 +597,8 @@ define(["jquery"], function () {
 
       post(CREATE_PATH, {
         phone: verified.phone,
+
+        country: paisSeleccionado(),
 
         account: account,
 
@@ -845,18 +918,46 @@ define(["jquery"], function () {
 
             if (!input || input.getAttribute("data-unyx") !== "phone") return;
 
-            var digits = input.value.replace(/\D/g, "").slice(0, 9);
+            var paisActual = paisSeleccionado();
+
+            var digits = input.value
+              .replace(/\D/g, "")
+              .slice(0, maxDigitos(paisActual));
 
             if (digits !== input.value) input.value = digits;
 
             if (
               input.getAttribute("aria-invalid") === "true" &&
-              /^9\d{8}$/.test(digits)
+              numeroValido(paisActual, digits)
             ) {
               input.removeAttribute("aria-invalid");
 
               el("phone-error").hidden = true;
             }
+          });
+
+          // Al cambiar de país se ajusta el máximo de dígitos y se limpia el
+          // error, para no arrastrar la validación del país anterior.
+          host.addEventListener("change", function (event) {
+            var select = event.target;
+
+            if (!select || select.getAttribute("data-unyx") !== "country") return;
+
+            var input = el("phone");
+
+            var paisActual = paisSeleccionado();
+
+            var max = maxDigitos(paisActual);
+
+            input.maxLength = max;
+
+            input.value = input.value.replace(/\D/g, "").slice(0, max);
+
+            input.removeAttribute("aria-invalid");
+
+            var error = el("phone-error");
+
+            if (error) error.hidden = true;
           });
 
           host.addEventListener("keydown", function (event) {
